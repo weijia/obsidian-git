@@ -203,11 +203,11 @@ class GitService {
           entry.value.contains(git2.GitStatus.indexDeleted) ||
           entry.value.contains(git2.GitStatus.indexRenamed) ||
           entry.value.contains(git2.GitStatus.indexTypeChange) ||
-          entry.value.contains(git2.GitStatus.worktreeNew) ||
-          entry.value.contains(git2.GitStatus.worktreeModified) ||
-          entry.value.contains(git2.GitStatus.worktreeDeleted) ||
-          entry.value.contains(git2.GitStatus.worktreeRenamed) ||
-          entry.value.contains(git2.GitStatus.worktreeTypeChange)) {
+          entry.value.contains(git2.GitStatus.wtNew) ||
+          entry.value.contains(git2.GitStatus.wtModified) ||
+          entry.value.contains(git2.GitStatus.wtDeleted) ||
+          entry.value.contains(git2.GitStatus.wtRenamed) ||
+          entry.value.contains(git2.GitStatus.wtTypeChange)) {
         return true;
       }
     }
@@ -245,7 +245,7 @@ class GitService {
       if (remoteHead != null) {
         final analysis = git2.Merge.analysis(
           repo: repo,
-          theirHead: git2.AnnotatedCommit.lookup(repo: repo, oid: remoteHead.target),
+          theirHead: remoteHead.target,
         );
 
         if (analysis.result.contains(git2.GitMergeAnalysis.normal) ||

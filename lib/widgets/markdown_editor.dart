@@ -78,6 +78,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             child: AppFlowyEditor(
               editorState: _editorState,
               editable: !widget.readOnly,
+              autoFocus: true,
               // 配置编辑器样式，与 App 主题协调
               editorStyle: EditorStyle.desktop(
                 padding: const EdgeInsets.all(16),
@@ -113,43 +114,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                   ),
                 ),
               ),
-              // 配置块组件样式
-              blockComponentBuilders: {
-                ...standardBlockComponentBuilderMap,
-                // 自定义标题样式
-                'heading': HeadingBlockComponentBuilder(
-                  textStyleBuilder: (level) {
-                    final double fontSize;
-                    switch (level) {
-                      case 1:
-                        fontSize = 28;
-                        break;
-                      case 2:
-                        fontSize = 24;
-                        break;
-                      case 3:
-                        fontSize = 20;
-                        break;
-                      case 4:
-                        fontSize = 18;
-                        break;
-                      case 5:
-                        fontSize = 16;
-                        break;
-                      case 6:
-                        fontSize = 14;
-                        break;
-                      default:
-                        fontSize = 16;
-                    }
-                    return TextStyle(
-                      color: colorScheme.onSurface,
-                      fontSize: fontSize,
-                      fontWeight: level <= 2 ? FontWeight.bold : FontWeight.w600,
-                    );
-                  },
-                ),
-              },
+              // 使用标准块组件构建器
+              blockComponentBuilders: standardBlockComponentBuilderMap,
             ),
           ),
         ),
@@ -216,17 +182,17 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             _buildToolbarButton(
               icon: Icons.format_list_bulleted,
               tooltip: '无序列表',
-              onPressed: _toggleBulletList,
+              onPressed: _insertBulletList,
             ),
             _buildToolbarButton(
               icon: Icons.format_list_numbered,
               tooltip: '有序列表',
-              onPressed: _toggleNumberedList,
+              onPressed: _insertNumberedList,
             ),
             _buildToolbarButton(
               icon: Icons.checklist,
               tooltip: '待办列表',
-              onPressed: _toggleTodoList,
+              onPressed: _insertTodoList,
             ),
             const SizedBox(width: 8),
             _buildDivider(),
@@ -235,27 +201,17 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             _buildToolbarButton(
               icon: Icons.format_quote,
               tooltip: '引用',
-              onPressed: _toggleQuote,
+              onPressed: _insertQuote,
             ),
             _buildToolbarButton(
               icon: Icons.code,
               tooltip: '代码块',
-              onPressed: _toggleCodeBlock,
+              onPressed: _insertCodeBlock,
             ),
             _buildToolbarButton(
               icon: Icons.table_chart,
               tooltip: '插入表格',
               onPressed: _showInsertTableDialog,
-            ),
-            _buildToolbarButton(
-              icon: Icons.image,
-              tooltip: '插入图片',
-              onPressed: _insertImage,
-            ),
-            _buildToolbarButton(
-              icon: Icons.link,
-              tooltip: '插入链接',
-              onPressed: _insertLink,
             ),
           ],
         ),
@@ -298,57 +254,150 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     );
   }
 
-  // 编辑器操作方法
+  // ============== 文本格式化方法 ==============
+
+  /// 切换粗体
+  void _toggleBold() {
+    _editorState.toggleAttribute(AppFlowyRichTextKeys.bold);
+  }
+
+  /// 切换斜体
+  void _toggleItalic() {
+    _editorState.toggleAttribute(AppFlowyRichTextKeys.italic);
+  }
+
+  /// 切换下划线
+  void _toggleUnderline() {
+    _editorState.toggleAttribute(AppFlowyRichTextKeys.underline);
+  }
+
+  /// 切换删除线
+  void _toggleStrikethrough() {
+    _editorState.toggleAttribute(AppFlowyRichTextKeys.strikethrough);
+  }
+
+  // ============== 块级元素插入方法 ==============
+
+  /// 插入标题
   void _insertHeading(int level) {
     final selection = _editorState.selection;
     if (selection == null) return;
 
-    final node = _editorState.getNodeAtPath(selection.start.path);
-    if (node != null) {
-      final transaction = _editorState.transaction;
-      transaction.updateNode(node, {
-        'subtype': 'heading',
-        'level': level,
-      });
-      _editorState.apply(transaction);
-    }
+    // 使用 formatNode 将当前节点转换为标题
+    _editorState.formatNode(
+      selection,
+      (node) {
+        // 保留原有文本内容
+        final delta = node.delta?.toJson() ?? [];
+        return node.copyWith(
+          type: HeadingBlockKeys.type,
+          attributes: {
+            HeadingBlockKeys.level: level,
+            blockComponentDelta: delta,
+          },
+        );
+      },
+    );
   }
 
-  void _toggleBold() {
-    _editorState.toggleAttribute('bold');
+  /// 插入无序列表
+  void _insertBulletList() {
+    final selection = _editorState.selection;
+    if (selection == null) return;
+
+    _editorState.formatNode(
+      selection,
+      (node) {
+        final delta = node.delta?.toJson() ?? [];
+        return node.copyWith(
+          type: BulletedListBlockKeys.type,
+          attributes: {
+            blockComponentDelta: delta,
+          },
+        );
+      },
+    );
   }
 
-  void _toggleItalic() {
-    _editorState.toggleAttribute('italic');
+  /// 插入有序列表
+  void _insertNumberedList() {
+    final selection = _editorState.selection;
+    if (selection == null) return;
+
+    _editorState.formatNode(
+      selection,
+      (node) {
+        final delta = node.delta?.toJson() ?? [];
+        return node.copyWith(
+          type: NumberedListBlockKeys.type,
+          attributes: {
+            blockComponentDelta: delta,
+          },
+        );
+      },
+    );
   }
 
-  void _toggleUnderline() {
-    _editorState.toggleAttribute('underline');
+  /// 插入待办列表
+  void _insertTodoList() {
+    final selection = _editorState.selection;
+    if (selection == null) return;
+
+    _editorState.formatNode(
+      selection,
+      (node) {
+        final delta = node.delta?.toJson() ?? [];
+        return node.copyWith(
+          type: TodoListBlockKeys.type,
+          attributes: {
+            TodoListBlockKeys.checked: false,
+            blockComponentDelta: delta,
+          },
+        );
+      },
+    );
   }
 
-  void _toggleStrikethrough() {
-    _editorState.toggleAttribute('strikethrough');
+  /// 插入引用
+  void _insertQuote() {
+    final selection = _editorState.selection;
+    if (selection == null) return;
+
+    _editorState.formatNode(
+      selection,
+      (node) {
+        final delta = node.delta?.toJson() ?? [];
+        return node.copyWith(
+          type: QuoteBlockKeys.type,
+          attributes: {
+            blockComponentDelta: delta,
+          },
+        );
+      },
+    );
   }
 
-  void _toggleBulletList() {
-    _editorState.toggleAttribute('bullet');
+  /// 插入代码块
+  void _insertCodeBlock() {
+    final selection = _editorState.selection;
+    if (selection == null) return;
+
+    _editorState.formatNode(
+      selection,
+      (node) {
+        final delta = node.delta?.toJson() ?? [];
+        return node.copyWith(
+          type: CodeBlockKeys.type,
+          attributes: {
+            CodeBlockKeys.language: 'plaintext',
+            blockComponentDelta: delta,
+          },
+        );
+      },
+    );
   }
 
-  void _toggleNumberedList() {
-    _editorState.toggleAttribute('number');
-  }
-
-  void _toggleTodoList() {
-    _editorState.toggleAttribute('todo');
-  }
-
-  void _toggleQuote() {
-    _editorState.toggleAttribute('quote');
-  }
-
-  void _toggleCodeBlock() {
-    _editorState.toggleAttribute('code');
-  }
+  // ============== 表格插入方法 ==============
 
   /// 显示插入表格对话框
   void _showInsertTableDialog() {
@@ -420,10 +469,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Column(
-                  children: List.generate(rows, (r) =>
-                    Row(
-                      children: List.generate(cols, (c) =>
-                        Expanded(
+                  children: List.generate(
+                    rows,
+                    (r) => Row(
+                      children: List.generate(
+                        cols,
+                        (c) => Expanded(
                           child: Container(
                             margin: const EdgeInsets.all(1),
                             padding: const EdgeInsets.all(4),
@@ -466,9 +517,9 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     );
   }
 
-  /// 创建表格节点 - 使用正确的 AppFlowy Editor 6.x 结构
+  /// 创建表格节点
   Node _createTableNode({required int rows, required int cols}) {
-    // 创建表格节点，使用正确的属性名（驼峰命名）
+    // 创建表格节点
     final tableNode = Node(
       type: TableBlockKeys.type,
       attributes: {
@@ -477,10 +528,9 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       },
     );
 
-    // 按列优先顺序添加单元格（这是 AppFlowy Editor 的要求）
+    // 按列优先顺序添加单元格
     for (var col = 0; col < cols; col++) {
       for (var row = 0; row < rows; row++) {
-        // 第一行作为标题
         final content = row == 0 ? '标题 ${col + 1}' : '';
         final cell = tableCellNode(content, row, col);
         tableNode.insert(cell);
@@ -492,47 +542,54 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   /// 插入表格
   void _insertTable({required int rows, required int cols}) {
-    final selection = _editorState.selection;
-
-    // 如果没有选择，在文档末尾插入
-    if (selection == null) {
-      _insertTableAtEnd(rows: rows, cols: cols);
-      return;
-    }
-
     try {
+      final selection = _editorState.selection;
       final transaction = _editorState.transaction;
       final tableNode = _createTableNode(rows: rows, cols: cols);
 
-      // 在当前选择位置后插入表格
-      final node = _editorState.getNodeAtPath(selection.end.path);
-      if (node != null) {
-        transaction.insertNode(selection.end.path.next, tableNode);
+      if (selection != null) {
+        // 在当前选择位置后插入表格
+        final node = _editorState.getNodeAtPath(selection.end.path);
+        if (node != null) {
+          transaction.insertNode(selection.end.path.next, tableNode);
+        } else {
+          _insertTableAtEnd(tableNode);
+          return;
+        }
       } else {
-        _insertTableAtEnd(rows: rows, cols: cols);
+        // 没有选择，在文档末尾插入
+        _insertTableAtEnd(tableNode);
         return;
       }
 
       _editorState.apply(transaction);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已插入 ${rows}x$cols 表格'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已插入 ${rows}x$cols 表格'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      _insertTableAtEnd(rows: rows, cols: cols);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('插入表格失败: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
   /// 在文档末尾插入表格
-  void _insertTableAtEnd({required int rows, required int cols}) {
+  void _insertTableAtEnd(Node tableNode) {
     try {
       final transaction = _editorState.transaction;
       final document = _editorState.document;
 
-      // 获取文档最后一个节点的路径
       final lastNode = document.root.children.lastOrNull;
       Path insertPath;
       if (lastNode != null) {
@@ -541,37 +598,30 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         insertPath = [0];
       }
 
-      final tableNode = _createTableNode(rows: rows, cols: cols);
       transaction.insertNode(insertPath, tableNode);
       _editorState.apply(transaction);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已插入 ${rows}x$cols 表格'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('表格已插入'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('插入表格失败: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('插入表格失败: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
-  void _insertImage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('图片插入功能即将推出')),
-    );
-  }
-
-  void _insertLink() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('链接插入功能即将推出')),
-    );
-  }
+  // ============== 保存和转换方法 ==============
 
   void _saveContent() {
     final markdown = _documentToMarkdown(_editorState.document);
@@ -604,10 +654,5 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     } catch (e) {
       return '';
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

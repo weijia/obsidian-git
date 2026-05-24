@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
         storagePath = _settingsService.gitConfig!.localPath;
 
         // 初始化 Git 服务
-        await _gitService.init(_settingsService.gitConfig!);
+        await _gitService.initialize();
       }
 
       // 初始化存储服务（如果没有 Git 配置，会使用默认应用文档目录）
@@ -644,7 +644,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _notesBloc.close();
-    _gitService.close();
     super.dispose();
   }
 }

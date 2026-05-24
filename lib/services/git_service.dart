@@ -21,7 +21,7 @@ class GitService {
   /// 初始化 Git 服务
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     try {
       _gitBindings = go_git_dart.GitBindings();
       _isInitialized = true;
@@ -39,7 +39,7 @@ class GitService {
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
-    
+
     try {
       _gitBindings!.clone(
         url,
@@ -61,7 +61,7 @@ class GitService {
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
-    
+
     try {
       _gitBindings!.fetch(
         remoteName,
@@ -83,7 +83,7 @@ class GitService {
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
-    
+
     try {
       _gitBindings!.push(
         remoteName,
@@ -104,7 +104,7 @@ class GitService {
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
-    
+
     try {
       return _gitBindings!.defaultBranch(
         url,
@@ -120,7 +120,7 @@ class GitService {
   /// 生成 RSA 密钥对
   Future<Map<String, String>> generateRsaKeys() async {
     if (!_isInitialized) await initialize();
-    
+
     try {
       final (publicKey, privateKey) = _gitBindings!.generateRsaKeys();
       return {
@@ -134,47 +134,32 @@ class GitService {
   }
 
   /// 使用 dart_git 初始化本地仓库
-  Future<void> initLocalRepo(String path) async {
-    try {
-      await dart_git.GitRepository.init(path);
-    } catch (e) {
-      print('初始化本地仓库失败: $e');
-      rethrow;
-    }
+  void initLocalRepo(String path) {
+    dart_git.GitRepository.init(path);
   }
 
-  /// 使用 dart_git 添加文件到暂存区
-  Future<void> add(String repoPath, String filePattern) async {
-    try {
-      final repo = await dart_git.GitRepository.load(repoPath);
-      await repo.add(filePattern);
-      repo.dispose();
-    } catch (e) {
-      print('添加文件失败: $e');
-      rethrow;
-    }
+  /// 使用 dart_git 添加文件到暂存区（同步方法）
+  void add(String repoPath, String filePattern) {
+    final repo = dart_git.GitRepository.load(repoPath);
+    repo.add(filePattern);
+    repo.close();
   }
 
   /// 使用 dart_git 提交更改
-  Future<void> commit({
+  void commit({
     required String repoPath,
     required String message,
     required String authorName,
     required String authorEmail,
-  }) async {
-    try {
-      final repo = await dart_git.GitRepository.load(repoPath);
-      final author = dart_git.GitAuthor(authorName, authorEmail);
-      await repo.commit(message: message, author: author);
-      repo.dispose();
-    } catch (e) {
-      print('提交失败: $e');
-      rethrow;
-    }
+  }) {
+    final repo = dart_git.GitRepository.load(repoPath);
+    final author = dart_git.GitAuthor(name: authorName, email: authorEmail);
+    repo.commit(message: message, author: author);
+    repo.close();
   }
 
   /// 完整的同步流程：fetch -> merge -> commit -> push
-  Future<void> sync({
+  Future<SyncResult> sync({
     required String localPath,
     required String authorName,
     required String authorEmail,
@@ -190,31 +175,36 @@ class GitService {
 
     // 2. 合并远程分支（使用 dart_git）
     try {
-      final repo = await dart_git.GitRepository.load(localPath);
-      final author = dart_git.GitAuthor(authorName, authorEmail);
-      await repo.mergeCurrentTrackingBranch(author: author);
-      repo.dispose();
+      final repo = dart_git.GitRepository.load(localPath);
+      final author = dart_git.GitAuthor(name: authorName, email: authorEmail);
+      repo.mergeTrackingBranch(author: author);
+      repo.close();
     } catch (e) {
       print('合并失败（可能没有远程分支）: $e');
       // 继续执行，可能本地没有提交需要合并
     }
 
     // 3. 添加所有更改
-    await add(localPath, '.');
+    try {
+      final repo = dart_git.GitRepository.load(localPath);
+      repo.add('.');
+      repo.close();
+    } catch (e) {
+      print('添加文件失败: $e');
+    }
 
     // 4. 检查是否有更改需要提交
     try {
-      final repo = await dart_git.GitRepository.load(localPath);
-      final status = await repo.status();
-      final hasChanges = status.any((s) => 
-        s.status != dart_git.GitFileStatus.unmodified &&
-        s.status != dart_git.GitFileStatus.ignored
-      );
-      repo.dispose();
+      final repo = dart_git.GitRepository.load(localPath);
+      final status = repo.status();
+      final hasChanges = status.added.isNotEmpty ||
+          status.modified.isNotEmpty ||
+          status.removed.isNotEmpty;
+      repo.close();
 
       if (hasChanges) {
         // 5. 提交
-        await commit(
+        commit(
           repoPath: localPath,
           message: 'Sync ${DateTime.now().toIso8601String()}',
           authorName: authorName,
@@ -230,8 +220,10 @@ class GitService {
       }
     } catch (e) {
       print('同步过程出错: $e');
-      rethrow;
+      return SyncResult(success: false, error: e.toString());
     }
+
+    return SyncResult(success: true);
   }
 
   /// 获取仓库路径
@@ -241,7 +233,7 @@ class GitService {
     if (path != null && path.isNotEmpty) {
       return path;
     }
-    
+
     final appDir = await getApplicationDocumentsDirectory();
     return p.join(appDir.path, 'notes');
   }
@@ -253,12 +245,15 @@ class GitService {
   }
 
   /// 检查目录是否是 Git 仓库
-  Future<bool> isGitRepo(String path) async {
-    try {
-      final gitDir = Directory(p.join(path, '.git'));
-      return await gitDir.exists();
-    } catch (e) {
-      return false;
-    }
+  bool isGitRepo(String path) {
+    return dart_git.GitRepository.isValidRepo(path);
   }
+}
+
+/// 同步结果
+class SyncResult {
+  final bool success;
+  final String? error;
+
+  const SyncResult({required this.success, this.error});
 }

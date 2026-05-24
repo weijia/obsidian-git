@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/note.dart';
 import '../../models/folder.dart';
 import '../../services/note_storage_service.dart';
@@ -297,7 +298,24 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     emit(currentState.copyWith(isSyncing: true, clearSyncError: true));
 
     try {
-      final result = await _gitService.sync();
+      final prefs = await SharedPreferences.getInstance();
+      final localPath = prefs.getString('git_local_path');
+      if (localPath == null || localPath.isEmpty) {
+        emit(currentState.copyWith(
+          isSyncing: false,
+          syncError: '未配置 Git 仓库路径',
+        ));
+        return;
+      }
+
+      final authorName = prefs.getString('git_username') ?? 'Obsidian Git User';
+      final authorEmail = prefs.getString('git_email') ?? 'user@example.com';
+
+      final result = await _gitService.sync(
+        localPath: localPath,
+        authorName: authorName,
+        authorEmail: authorEmail,
+      );
 
       if (result.success) {
         // 重新加载笔记

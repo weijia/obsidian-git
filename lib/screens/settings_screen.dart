@@ -100,7 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       final localPath = await _gitService.getRepoPath();
-      final isExistingRepo = await _gitService.isGitRepo(localPath);
+      final isExistingRepo = _gitService.isGitRepo(localPath);
 
       // 读取私钥
       String? privateKey;
@@ -141,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final localPath = await _gitService.getRepoPath();
       
-      if (!await _gitService.isGitRepo(localPath)) {
+      if (!_gitService.isGitRepo(localPath)) {
         _showStatus('请先克隆仓库', success: false);
         setState(() => _isSyncing = false);
         return;

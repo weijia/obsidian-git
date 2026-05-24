@@ -52,8 +52,13 @@ class _HomeScreenState extends State<HomeScreen> {
           _settingsService.gitConfig!.localPath.isNotEmpty) {
         storagePath = _settingsService.gitConfig!.localPath;
 
-        // 初始化 Git 服务
-        await _gitService.initialize();
+        // 初始化 Git 服务（可能失败，但不阻止应用启动）
+        try {
+          await _gitService.initialize();
+        } catch (e) {
+          print('Git 服务初始化失败: $e');
+          // 继续执行，Git 功能将不可用
+        }
       }
 
       // 初始化存储服务（如果没有 Git 配置，会使用默认应用文档目录）

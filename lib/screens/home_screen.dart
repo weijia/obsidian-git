@@ -116,7 +116,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return BlocProvider.value(
       value: _notesBloc,
       child: Scaffold(
-        body: BlocBuilder<NotesBloc, NotesState>(
+        body: SafeArea(
+          child: BlocBuilder<NotesBloc, NotesState>(
           builder: (context, state) {
             if (state is NotesLoading) {
               return const Center(child: CircularProgressIndicator());
@@ -193,6 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
             return const Center(child: Text('初始化中...'));
           },
         ),
+        ), // SafeArea
         // 浮动按钮 - 切换侧边栏
         floatingActionButton: FloatingActionButton.small(
           onPressed: () => setState(() => _sidebarVisible = !_sidebarVisible),

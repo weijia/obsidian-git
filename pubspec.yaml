@@ -13,7 +13,10 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # WYSIWYG 编辑器
-  appflowy_editor: ^6.2.0
+  appflowy_editor:
+    git:
+      url: https://github.com/AppFlowy-IO/appflowy-editor.git
+      ref: main
 
   # 状态管理
   flutter_bloc: ^8.1.6

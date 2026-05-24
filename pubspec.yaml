@@ -1,0 +1,54 @@
+name: obsidian_git
+description: "跨平台 Markdown 所见即所得编辑器，支持 Git 自动同步"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # WYSIWYG 编辑器
+  appflowy_editor: ^6.2.0
+
+  # Git 操作
+  dart_git:
+    git:
+      url: https://github.com/GitJournal/dart_git.git
+      ref: master
+
+  # 状态管理
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
+
+  # 本地存储
+  shared_preferences: ^2.2.3
+  path_provider: ^2.1.3
+
+  # 文件操作
+  path: ^1.9.0
+
+  # Markdown 解析
+  markdown: ^7.2.2
+
+  # UI 组件
+  flutter_slidable: ^3.1.1
+  intl: ^0.20.2
+
+  # SSH 密钥支持
+  pointycastle: ^3.7.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/

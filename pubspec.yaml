@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.12.0
+  sdk: '>=3.6.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -14,12 +14,6 @@ dependencies:
 
   # WYSIWYG 编辑器
   appflowy_editor: ^6.2.0
-
-  # Git 操作
-  dart_git:
-    git:
-      url: https://github.com/GitJournal/dart_git.git
-      ref: master
 
   # 状态管理
   flutter_bloc: ^8.1.6
@@ -49,6 +43,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  assets:
-    - assets/images/

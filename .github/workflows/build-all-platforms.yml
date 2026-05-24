@@ -204,8 +204,10 @@ jobs:
 
       - name: Create TAR
         run: |
-          cd build/linux/x64/release/bundle
-          tar czf obsidian-git-linux-x64.tar.gz .
+          mkdir -p /tmp/linux-bundle
+          cp -r build/linux/x64/release/bundle/* /tmp/linux-bundle/
+          cd /tmp/linux-bundle
+          tar czf $GITHUB_WORKSPACE/obsidian-git-linux-x64.tar.gz .
 
       - name: Upload Linux build
         uses: actions/upload-artifact@v4

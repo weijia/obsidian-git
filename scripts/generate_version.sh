@@ -25,8 +25,13 @@ else
     # 格式: 0.0.0-YYYYMMDD.HHMMSS+08
     BUILD_DATETIME=$(TZ='Asia/Shanghai' date '+%Y%m%d.%H%M%S')
     VERSION_NAME="0.0.0-${BUILD_DATETIME}+08"
-    # 用时间戳作为 build number
-    VERSION_NUMBER=$(TZ='Asia/Shanghai' date '+%Y%m%d%H%M%S')
+    # 用时间戳作为 build number（取后 9 位，确保不超过 Android 限制 2100000000）
+    TIMESTAMP=$(TZ='Asia/Shanghai' date '+%Y%m%d%H%M%S')
+    VERSION_NUMBER=$(echo "$TIMESTAMP" | sed 's/^.*\(.\{9\}\)$/\1/')
+    # 确保不超过 2100000000
+    if [ "$VERSION_NUMBER" -gt 2100000000 ]; then
+      VERSION_NUMBER=$((VERSION_NUMBER % 2100000000))
+    fi
     BUILD_TYPE="datetime"
     BUILD_TIMEZONE="UTC+8"
 fi

@@ -96,6 +96,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    // 检查 URL 格式
+    if (!_gitService.isSshUrl(repoUrl)) {
+      final sshUrl = _gitService.convertHttpsToSsh(repoUrl);
+      final shouldConvert = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('需要 SSH URL'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('go_git_dart 只支持 SSH 协议，不支持 HTTPS。'),
+              const SizedBox(height: 12),
+              Text('当前 URL:', style: TextStyle(color: Colors.grey[600])),
+              Text(repoUrl, style: const TextStyle(fontFamily: 'monospace')),
+              const SizedBox(height: 12),
+              const Text('转换为 SSH URL:'),
+              Text(sshUrl, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('使用 SSH URL'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldConvert != true) {
+        return;
+      }
+
+      // 更新 URL 为 SSH 格式
+      _repoUrlController.text = sshUrl;
+    }
+
+    // 检查是否有 SSH 密钥
+    if (_sshKeyPath == null) {
+      _showStatus('请先生成或导入 SSH 私钥', success: false);
+      return;
+    }
+
     setState(() => _isCloning = true);
 
     try {
@@ -103,10 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final isExistingRepo = _gitService.isGitRepo(localPath);
 
       // 读取私钥
-      String? privateKey;
-      if (_sshKeyPath != null) {
-        privateKey = await File(_sshKeyPath!).readAsString();
-      }
+      final privateKey = await File(_sshKeyPath!).readAsString();
 
       if (isExistingRepo) {
         // 已存在，执行 fetch
@@ -119,7 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } else {
         // 克隆新仓库
         await _gitService.clone(
-          url: repoUrl,
+          url: _repoUrlController.text.trim(),
           localPath: localPath,
           privateKey: privateKey,
           privateKeyPassword: _sshKeyPassword,
@@ -127,6 +171,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await _gitService.setRepoPath(localPath);
         _showStatus('仓库克隆成功', success: true);
       }
+    } on GitSshRequiredException catch (e) {
+      _showStatus(e.toString(), success: false);
+    } on GitAuthException catch (e) {
+      _showStatus(e.toString(), success: false);
     } catch (e) {
       _showStatus('操作失败: $e', success: false);
     } finally {

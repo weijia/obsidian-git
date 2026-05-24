@@ -32,6 +32,25 @@ class GitService {
     }
   }
 
+  /// 检测 URL 是否为 SSH 格式
+  bool isSshUrl(String url) {
+    return url.startsWith('git@') || url.startsWith('ssh://');
+  }
+
+  /// 将 HTTPS URL 转换为 SSH URL
+  String convertHttpsToSsh(String url) {
+    // 匹配 https://github.com/user/repo.git
+    final httpsPattern = RegExp(r'^https?://([^/]+)/([^/]+)/([^/]+?)(?:\.git)?$');
+    final match = httpsPattern.firstMatch(url);
+    if (match != null) {
+      final host = match.group(1);
+      final user = match.group(2);
+      final repo = match.group(3);
+      return 'git@$host:$user/$repo.git';
+    }
+    return url;
+  }
+
   /// 克隆仓库
   Future<void> clone({
     required String url,
@@ -41,11 +60,26 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
+    // 检查是否为 SSH URL
+    if (!isSshUrl(url)) {
+      throw GitSshRequiredException(
+        'go_git_dart 只支持 SSH 协议。\n'
+        '当前 URL: $url\n'
+        '请使用 SSH URL (git@host:user/repo.git) 或转换为 SSH:\n'
+        '${convertHttpsToSsh(url)}'
+      );
+    }
+
+    // 检查是否有私钥
+    if (privateKey == null || privateKey.isEmpty) {
+      throw GitAuthException('SSH 克隆需要提供私钥。请在设置中生成或导入 SSH 密钥。');
+    }
+
     try {
       _gitBindings!.clone(
         url,
         localPath,
-        privateKey != null ? utf8.encode(privateKey) : utf8.encode(''),
+        utf8.encode(privateKey),
         privateKeyPassword ?? '',
       );
     } catch (e) {
@@ -63,11 +97,16 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
+    // 检查是否有私钥
+    if (privateKey == null || privateKey.isEmpty) {
+      throw GitAuthException('SSH 操作需要提供私钥。请在设置中生成或导入 SSH 密钥。');
+    }
+
     try {
       _gitBindings!.fetch(
         remoteName,
         localPath,
-        privateKey != null ? utf8.encode(privateKey) : utf8.encode(''),
+        utf8.encode(privateKey),
         privateKeyPassword ?? '',
       );
     } catch (e) {
@@ -85,11 +124,16 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
+    // 检查是否有私钥
+    if (privateKey == null || privateKey.isEmpty) {
+      throw GitAuthException('SSH 操作需要提供私钥。请在设置中生成或导入 SSH 密钥。');
+    }
+
     try {
       _gitBindings!.push(
         remoteName,
         localPath,
-        privateKey != null ? utf8.encode(privateKey) : utf8.encode(''),
+        utf8.encode(privateKey),
         privateKeyPassword ?? '',
       );
     } catch (e) {
@@ -257,4 +301,20 @@ class SyncResult {
   final String? error;
 
   const SyncResult({required this.success, this.error});
+}
+
+/// Git SSH 认证异常
+class GitSshRequiredException implements Exception {
+  final String message;
+  GitSshRequiredException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// Git 认证异常
+class GitAuthException implements Exception {
+  final String message;
+  GitAuthException(this.message);
+  @override
+  String toString() => message;
 }

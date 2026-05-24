@@ -38,9 +38,6 @@ dependencies:
   # 文件选择
   file_picker: ^10.2.0
 
-  # Git 操作（使用 libgit2，支持 Android）
-  git2dart: ^0.4.0
-
   # SSH 密钥支持
   pointycastle: ^3.7.4
 

@@ -101,12 +101,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             // 标题
             _buildToolbarButton(
               icon: Icons.title,
-              tooltip: '标题',
+              tooltip: '标题 H1',
               onPressed: () => _insertHeading(1),
             ),
             _buildToolbarButton(
               icon: Icons.format_size,
-              tooltip: '副标题',
+              tooltip: '副标题 H2',
               onPressed: () => _insertHeading(2),
             ),
             const SizedBox(width: 8),
@@ -169,7 +169,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             _buildToolbarButton(
               icon: Icons.table_chart,
               tooltip: '插入表格',
-              onPressed: _insertTable,
+              onPressed: _showInsertTableDialog,
             ),
             _buildToolbarButton(
               icon: Icons.image,
@@ -254,35 +254,168 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     _editorState.toggleAttribute('code');
   }
 
-  void _insertTable() {
+  /// 显示插入表格对话框
+  void _showInsertTableDialog() {
+    int rows = 3;
+    int cols = 3;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('插入表格'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Text('行数:'),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Slider(
+                      value: rows.toDouble(),
+                      min: 1,
+                      max: 10,
+                      divisions: 9,
+                      label: rows.toString(),
+                      onChanged: (value) {
+                        setState(() {
+                          rows = value.round();
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 30,
+                    child: Text(rows.toString()),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text('列数:'),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Slider(
+                      value: cols.toDouble(),
+                      min: 1,
+                      max: 10,
+                      divisions: 9,
+                      label: cols.toString(),
+                      onChanged: (value) {
+                        setState(() {
+                          cols = value.round();
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 30,
+                    child: Text(cols.toString()),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // 预览
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Column(
+                  children: List.generate(rows, (r) =>
+                    Row(
+                      children: List.generate(cols, (c) =>
+                        Expanded(
+                          child: Container(
+                            margin: const EdgeInsets.all(1),
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              color: Colors.grey.shade100,
+                            ),
+                            child: Text(
+                              r == 0 ? '标题${c + 1}' : '单元格',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: r == 0 ? FontWeight.bold : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _insertTable(rows: rows, cols: cols);
+              },
+              child: const Text('插入'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 插入表格
+  void _insertTable({required int rows, required int cols}) {
     final selection = _editorState.selection;
     if (selection == null) return;
 
-    // 创建表格 - 使用正确的 AppFlowy Editor API
     final transaction = _editorState.transaction;
-    
+
     // 创建表格节点
     final tableNode = Node(
       type: 'table',
       children: [
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < rows; i++)
           Node(
             type: 'table_row',
             children: [
-              for (var j = 0; j < 3; j++)
+              for (var j = 0; j < cols; j++)
                 Node(
                   type: 'table_cell',
                   children: [
-                    Node(type: 'paragraph'),
+                    Node(
+                      type: 'paragraph',
+                      attributes: {
+                        'delta': [
+                          {
+                            'insert': i == 0 ? '标题 ${j + 1}' : '',
+                          },
+                        ],
+                      },
+                    ),
                   ],
                 ),
             ],
           ),
       ],
     );
-    
+
     transaction.insertNode(selection.start.path, tableNode);
     _editorState.apply(transaction);
+
+    // 显示表格操作提示
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('表格已插入。点击表格单元格后，使用右键菜单或编辑器工具栏操作表格。'),
+        duration: Duration(seconds: 3),
+      ),
+    );
   }
 
   void _insertImage() {

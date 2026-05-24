@@ -6,6 +6,7 @@ import '../widgets/markdown_editor.dart';
 import '../widgets/sidebar.dart';
 import '../../services/note_storage_service.dart';
 import '../../services/git_service.dart';
+import '../../services/settings_service.dart';
 import 'settings_screen.dart';
 
 /// 主屏幕 - 参考 gitjournal 布局
@@ -20,8 +21,11 @@ class _HomeScreenState extends State<HomeScreen> {
   late NotesBloc _notesBloc;
   final NoteStorageService _storageService = NoteStorageService();
   final GitService _gitService = GitService();
+  final SettingsService _settingsService = SettingsService();
   bool _sidebarVisible = true;
   double _sidebarWidth = 280;
+  bool _isInitialized = false;
+  String? _initError;
 
   @override
   void initState() {
@@ -34,12 +38,81 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initServices() async {
-    await _storageService.init(null);
-    _notesBloc.add(const LoadNotes());
+    try {
+      // 加载设置
+      await _settingsService.loadSettings();
+
+      // 确定存储路径
+      String? storagePath;
+
+      // 如果配置了 Git 仓库，使用 Git 仓库路径
+      if (_settingsService.gitConfig != null &&
+          _settingsService.gitConfig!.localPath.isNotEmpty) {
+        storagePath = _settingsService.gitConfig!.localPath;
+
+        // 初始化 Git 服务
+        await _gitService.init(_settingsService.gitConfig!);
+      }
+
+      // 初始化存储服务（如果没有 Git 配置，会使用默认应用文档目录）
+      await _storageService.init(storagePath);
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      _notesBloc.add(const LoadNotes());
+    } catch (e) {
+      setState(() {
+        _initError = e.toString();
+        _isInitialized = true;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('正在初始化...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_initError != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              Text('初始化失败: $_initError'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _initError = null;
+                    _isInitialized = false;
+                  });
+                  _initServices();
+                },
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return BlocProvider.value(
       value: _notesBloc,
       child: Scaffold(
@@ -148,6 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
         // 同步状态栏
         if (state.isSyncing || state.syncError != null)
           _buildSyncStatusBar(context, state),
+        // 本地存储提示
+        if (_settingsService.gitConfig == null)
+          _buildLocalStorageBanner(context),
       ],
     );
   }
@@ -169,12 +245,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Theme.of(context).colorScheme.outline,
                 ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            _settingsService.gitConfig == null
+                ? '当前使用本地存储，可在设置中配置 Git 同步'
+                : '笔记将自动同步到 Git 仓库',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
             icon: const Icon(Icons.add),
             label: const Text('创建新笔记'),
             onPressed: () => _showCreateNoteDialog(context, null),
           ),
+          if (_settingsService.gitConfig == null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.settings),
+              label: const Text('配置 Git 同步'),
+              onPressed: () => _openSettings(context),
+            ),
+          ],
         ],
       ),
     );
@@ -202,6 +295,41 @@ class _HomeScreenState extends State<HomeScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
+          // 存储模式指示器
+          if (_settingsService.gitConfig == null)
+            Tooltip(
+              message: '本地存储模式 - 点击配置 Git 同步',
+              child: TextButton.icon(
+                onPressed: () => _openSettings(context),
+                icon: const Icon(Icons.computer, size: 16),
+                label: const Text('本地'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            )
+          else
+            Tooltip(
+              message: 'Git 同步已启用',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.sync,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Git',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(width: 8),
           // 同步状态
           if (state.isSyncing)
             const Row(
@@ -246,20 +374,51 @@ class _HomeScreenState extends State<HomeScreen> {
             size: 16,
           ),
           const SizedBox(width: 8),
-          Text(
-            state.syncError ?? '正在同步...',
-            style: TextStyle(
-              color: state.syncError != null
-                  ? Theme.of(context).colorScheme.onErrorContainer
-                  : Theme.of(context).colorScheme.onPrimaryContainer,
+          Expanded(
+            child: Text(
+              state.syncError ?? '正在同步...',
+              style: TextStyle(
+                color: state.syncError != null
+                    ? Theme.of(context).colorScheme.onErrorContainer
+                    : Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
             ),
           ),
-          const Spacer(),
           if (state.syncError != null)
             TextButton(
               onPressed: () => _notesBloc.add(const SyncWithGit()),
               child: const Text('重试'),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocalStorageBanner(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 16,
+            color: Theme.of(context).colorScheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '当前使用本地存储。笔记保存在本机，可在设置中配置 Git 仓库进行同步。',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSecondaryContainer,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _openSettings(context),
+            child: const Text('配置'),
+          ),
         ],
       ),
     );
@@ -317,7 +476,10 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (context) => const SettingsScreen(),
       ),
-    );
+    ).then((_) {
+      // 返回设置页面后重新初始化服务
+      _initServices();
+    });
   }
 
   @override

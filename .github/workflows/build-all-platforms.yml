@@ -28,7 +28,7 @@ jobs:
         id: version
         run: |
           chmod +x scripts/generate_version.sh
-          source scripts/generate_version.sh
+          source <(sed 's/^echo /export /g' scripts/generate_version.sh)
 
           # 输出版本信息
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
@@ -38,14 +38,13 @@ jobs:
           echo "build_datetime=$BUILD_DATETIME" >> $GITHUB_OUTPUT
           echo "build_timezone=$BUILD_TIMEZONE" >> $GITHUB_OUTPUT
 
-          # 生成 --dart-define 参数（用于注入到 Flutter 编译）
+          # 生成 --dart-define 参数
           DART_DEFINES="--dart-define=VERSION_NAME=$VERSION_NAME"
           DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TYPE=$BUILD_TYPE"
-          DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TAG=${BUILD_TAG:-}"
-          DART_DEFINES="$DART_DEFINES --dart-define=VERSION_DATETIME=${BUILD_DATETIME:-}"
-          DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TIMEZONE=${BUILD_TIMEZONE:-}"
+          DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TAG=$BUILD_TAG"
+          DART_DEFINES="$DART_DEFINES --dart-define=VERSION_DATETIME=$BUILD_DATETIME"
+          DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TIMEZONE=$BUILD_TIMEZONE"
 
-          # 写入到文件（避免多行字符串在 GITHUB_OUTPUT 中的问题）
           echo "$DART_DEFINES" > /tmp/dart_defines.txt
           echo "dart_defines<<EOF" >> $GITHUB_OUTPUT
           cat /tmp/dart_defines.txt >> $GITHUB_OUTPUT

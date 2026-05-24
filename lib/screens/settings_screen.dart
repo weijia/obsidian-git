@@ -164,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<SyncFrequency>(
-                          initialValue: _syncFrequency,
+                          value: _syncFrequency,
                           decoration: const InputDecoration(
                             labelText: '同步频率',
                             border: OutlineInputBorder(),

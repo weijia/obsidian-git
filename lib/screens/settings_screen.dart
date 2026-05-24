@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../models/git_config.dart';
+import '../services/git_service.dart';
 import '../version.dart';
 
 /// 设置屏幕
@@ -23,12 +24,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
 
+  final GitService _gitService = GitService();
+
   GitConfig? _config;
   bool _isLoading = true;
   bool _autoSync = false;
   SyncFrequency _syncFrequency = SyncFrequency.manual;
+  bool _isCloning = false;
+  bool _isSyncing = false;
   String? _sshKeyPath;
   String? _sshPublicKey;
+  String? _sshKeyPassword;
   String? _statusMessage;
   bool? _statusSuccess;
 
@@ -61,6 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _syncFrequency = _config?.syncFrequency ?? SyncFrequency.manual;
       _sshKeyPath = prefs.getString('git_ssh_key_path');
       _sshPublicKey = prefs.getString('git_ssh_public_key');
+      _sshKeyPassword = prefs.getString('git_ssh_key_password');
       _isLoading = false;
     });
   }
@@ -81,22 +88,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// 导入 SSH 私钥
-  Future<void> _importSSHKey() async {
+  /// 克隆或更新仓库
+  Future<void> _cloneOrUpdateRepo() async {
+    final repoUrl = _repoUrlController.text.trim();
+    if (repoUrl.isEmpty) {
+      _showStatus('请先输入仓库地址', success: false);
+      return;
+    }
+
+    setState(() => _isCloning = true);
+
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-      );
+      final localPath = await _gitService.getRepoPath();
+      final isExistingRepo = await _gitService.isGitRepo(localPath);
 
-      if (result == null || result.files.isEmpty) return;
+      // 读取私钥
+      String? privateKey;
+      if (_sshKeyPath != null) {
+        privateKey = await File(_sshKeyPath!).readAsString();
+      }
 
-      final file = result.files.first;
-      if (file.path == null) {
-        _showStatus('无法读取文件路径', success: false);
+      if (isExistingRepo) {
+        // 已存在，执行 fetch
+        await _gitService.fetch(
+          localPath: localPath,
+          privateKey: privateKey,
+          privateKeyPassword: _sshKeyPassword,
+        );
+        _showStatus('仓库已更新', success: true);
+      } else {
+        // 克隆新仓库
+        await _gitService.clone(
+          url: repoUrl,
+          localPath: localPath,
+          privateKey: privateKey,
+          privateKeyPassword: _sshKeyPassword,
+        );
+        await _gitService.setRepoPath(localPath);
+        _showStatus('仓库克隆成功', success: true);
+      }
+    } catch (e) {
+      _showStatus('操作失败: $e', success: false);
+    } finally {
+      setState(() => _isCloning = false);
+    }
+  }
+
+  /// 同步到远程
+  Future<void> _syncToRemote() async {
+    setState(() => _isSyncing = true);
+
+    try {
+      final localPath = await _gitService.getRepoPath();
+      
+      if (!await _gitService.isGitRepo(localPath)) {
+        _showStatus('请先克隆仓库', success: false);
+        setState(() => _isSyncing = false);
         return;
       }
 
-      // 读取私钥内容
+      // 读取私钥
+      String? privateKey;
+      if (_sshKeyPath != null) {
+        privateKey = await File(_sshKeyPath!).readAsString();
+      }
+
+      await _gitService.sync(
+        localPath: localPath,
+        authorName: _usernameController.text.isNotEmpty 
+            ? _usernameController.text 
+            : 'Obsidian Git User',
+        authorEmail: _emailController.text.isNotEmpty 
+            ? _emailController.text 
+            : 'user@example.com',
+        privateKey: privateKey,
+        privateKeyPassword: _sshKeyPassword,
+      );
+
+      _showStatus('同步成功', success: true);
+    } catch (e) {
+      _showStatus('同步失败: $e', success: false);
+    } finally {
+      setState(() => _isSyncing = false);
+    }
+  }
+
+  /// 生成 SSH 密钥对
+  Future<void> _generateSSHKey() async {
+    try {
+      setState(() => _isLoading = true);
+      
+      final keys = await _gitService.generateRsaKeys();
+      
+      // 保存到应用目录
+      final appDir = await getApplicationDocumentsDirectory();
+      final sshDir = Directory(p.join(appDir.path, '.ssh'));
+      if (!await sshDir.exists()) {
+        await sshDir.create(recursive: true);
+      }
+
+      final privateKeyPath = p.join(sshDir.path, 'id_rsa');
+      await File(privateKeyPath).writeAsString(keys['privateKey']!);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('git_ssh_key_path', privateKeyPath);
+      await prefs.setString('git_ssh_public_key', keys['publicKey']!);
+
+      setState(() {
+        _sshKeyPath = privateKeyPath;
+        _sshPublicKey = keys['publicKey'];
+        _isLoading = false;
+      });
+
+      // 显示公钥
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('SSH 密钥已生成'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('请将以下公钥添加到您的 Git 托管服务：'),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: SelectableText(
+                    keys['publicKey']!.trim(),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: keys['publicKey']!.trim()));
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('公钥已复制')),
+                  );
+                },
+                icon: const Icon(Icons.copy),
+                label: const Text('复制并关闭'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      _showStatus('生成密钥失败: $e', success: false);
+    }
+  }
+
+  /// 导入 SSH 私钥
+  Future<void> _importSSHKey() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      if (file.path == null) return;
+
       final privateKey = await File(file.path!).readAsString();
 
       // 保存到应用目录
@@ -106,55 +269,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await sshDir.create(recursive: true);
       }
 
-      final privateKeyPath = p.join(sshDir.path, 'id_ed25519');
+      final privateKeyPath = p.join(sshDir.path, 'id_rsa_imported');
       await File(privateKeyPath).writeAsString(privateKey);
 
-      // 保存路径
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('git_ssh_key_path', privateKeyPath);
+
+      // 尝试提取公钥（如果私钥包含）
+      // 这里简化处理，实际可能需要单独导入公钥
 
       setState(() {
         _sshKeyPath = privateKeyPath;
       });
 
-      _showStatus('SSH 私钥已导入: ${p.basename(file.path!)}', success: true);
+      _showStatus('私钥已导入', success: true);
     } catch (e) {
       _showStatus('导入失败: $e', success: false);
     }
-  }
-
-  /// 生成 SSH 密钥对
-  Future<void> _generateSSHKey() async {
-    // 在 Android/iOS 上无法直接执行 ssh-keygen
-    // 显示提示信息
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('生成 SSH 密钥'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('在移动设备上生成 SSH 密钥需要特殊处理。'),
-            SizedBox(height: 12),
-            Text('推荐方式：'),
-            SizedBox(height: 8),
-            Text('1. 在电脑上生成密钥对：'),
-            Text('   ssh-keygen -t ed25519 -C "your@email.com"'),
-            SizedBox(height: 8),
-            Text('2. 将私钥文件导入到本应用'),
-            SizedBox(height: 8),
-            Text('3. 将公钥添加到 Git 托管服务'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showStatus(String message, {required bool success}) {
@@ -244,35 +375,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Git 仓库配置',
                       icon: Icons.source,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade200),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.info_outline,
-                                  color: Colors.orange.shade800, size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Git 同步功能在移动设备上有一定限制。建议先在电脑上配置好 Git 仓库，然后将笔记文件复制到设备使用。',
-                                  style: TextStyle(
-                                      color: Colors.orange.shade800,
-                                      fontSize: 12),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
                         TextFormField(
                           controller: _repoUrlController,
                           decoration: const InputDecoration(
                             labelText: '仓库地址',
-                            hintText: 'https://github.com/user/repo.git',
+                            hintText: 'git@github.com:user/repo.git',
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) {
@@ -290,6 +397,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             hintText: 'main',
                             border: OutlineInputBorder(),
                           ),
+                        ),
+                        const SizedBox(height: 16),
+                        // 克隆/同步按钮
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _isCloning ? null : _cloneOrUpdateRepo,
+                                icon: _isCloning
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.download),
+                                label: Text(_isCloning ? '克隆中...' : '克隆/更新'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _isSyncing ? null : _syncToRemote,
+                                icon: _isSyncing
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.sync),
+                                label: Text(_isSyncing ? '同步中...' : '同步到远程'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -391,7 +531,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ListTile(
                           leading: const Icon(Icons.add_circle_outline),
                           title: const Text('生成 SSH 密钥'),
-                          subtitle: const Text('查看在电脑上生成密钥的说明'),
+                          subtitle: const Text('生成 RSA 密钥对'),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: _generateSSHKey,
                         ),
@@ -431,8 +571,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ClipboardData(text: _sshPublicKey!.trim()),
                                 );
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('公钥已复制到剪贴板')),
+                                  const SnackBar(content: Text('公钥已复制')),
                                 );
                               },
                               icon: const Icon(Icons.copy, size: 14),

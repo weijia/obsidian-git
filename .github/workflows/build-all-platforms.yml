@@ -69,6 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-java@v4
         with:
@@ -79,6 +81,11 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
 
       - name: Get dependencies
         run: flutter pub get
@@ -115,11 +122,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
+
+      - name: Install Go (for go_git_dart FFI)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -143,11 +157,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
+
+      - name: Install Go (for go_git_dart FFI)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -176,6 +197,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Linux dependencies
         run: |
@@ -186,6 +209,11 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
+
+      - name: Install Go (for go_git_dart FFI)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -216,11 +244,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
+
+      - name: Install Go (for go_git_dart FFI)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get

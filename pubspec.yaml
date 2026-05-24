@@ -41,6 +41,12 @@ dependencies:
   # SSH 密钥支持
   pointycastle: ^3.7.4
 
+  # Git 操作（GitJournal 方案）
+  go_git_dart:
+    git: https://github.com/GitJournal/go_git_dart.git
+  dart_git:
+    git: https://github.com/GitJournal/dart-git.git
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

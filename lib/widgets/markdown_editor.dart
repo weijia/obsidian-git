@@ -377,7 +377,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     );
   }
 
-  /// 插入代码块
+  /// 插入代码块（使用引用块作为替代）
   void _insertCodeBlock() {
     final selection = _editorState.selection;
     if (selection == null) return;
@@ -387,9 +387,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       (node) {
         final delta = node.delta?.toJson() ?? [];
         return node.copyWith(
-          type: CodeBlockKeys.type,
+          type: QuoteBlockKeys.type,
           attributes: {
-            CodeBlockKeys.language: 'plaintext',
             blockComponentDelta: delta,
           },
         );

@@ -112,27 +112,43 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                     fontSize: 14,
                   ),
                 ),
-                headingStyleConfiguration: HeadingStyleConfiguration(
-                  h1: TextStyle(
-                    color: colorScheme.onSurface,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  h2: TextStyle(
-                    color: colorScheme.onSurface,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  h3: TextStyle(
-                    color: colorScheme.onSurface,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
               ),
               // 配置块组件样式
               blockComponentBuilders: {
                 ...standardBlockComponentBuilderMap,
+                // 自定义标题样式
+                'heading': HeadingBlockComponentBuilder(
+                  textStyleBuilder: (level) {
+                    final double fontSize;
+                    switch (level) {
+                      case 1:
+                        fontSize = 28;
+                        break;
+                      case 2:
+                        fontSize = 24;
+                        break;
+                      case 3:
+                        fontSize = 20;
+                        break;
+                      case 4:
+                        fontSize = 18;
+                        break;
+                      case 5:
+                        fontSize = 16;
+                        break;
+                      case 6:
+                        fontSize = 14;
+                        break;
+                      default:
+                        fontSize = 16;
+                    }
+                    return TextStyle(
+                      color: colorScheme.onSurface,
+                      fontSize: fontSize,
+                      fontWeight: level <= 2 ? FontWeight.bold : FontWeight.w600,
+                    );
+                  },
+                ),
               },
             ),
           ),

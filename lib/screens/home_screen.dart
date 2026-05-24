@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../models/folder.dart';
+import '../../models/note.dart';
 import '../../blocs/notes/notes_bloc.dart';
 import '../widgets/markdown_editor.dart';
 import '../widgets/sidebar.dart';
@@ -352,11 +353,68 @@ class _HomeScreenState extends State<HomeScreen> {
                 : () => _notesBloc.add(const SyncWithGit()),
             tooltip: '同步到 Git',
           ),
-          IconButton(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // TODO: 显示更多操作
+            tooltip: '更多操作',
+            onSelected: (value) {
+              switch (value) {
+                case 'settings':
+                  _openSettings(context);
+                  break;
+                case 'export':
+                  _exportNote(state.selectedNote);
+                  break;
+                case 'delete':
+                  _deleteCurrentNote(state.selectedNote);
+                  break;
+                case 'share':
+                  _shareNote(state.selectedNote);
+                  break;
+              }
             },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings),
+                    SizedBox(width: 8),
+                    Text('设置'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'export',
+                child: Row(
+                  children: [
+                    Icon(Icons.download),
+                    SizedBox(width: 8),
+                    Text('导出 Markdown'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(Icons.share),
+                    SizedBox(width: 8),
+                    Text('分享'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
+                    const SizedBox(width: 8),
+                    Text('删除笔记', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -482,6 +540,72 @@ class _HomeScreenState extends State<HomeScreen> {
       // 返回设置页面后重新初始化服务
       _initServices();
     });
+  }
+
+  /// 导出笔记为 Markdown 文件
+  void _exportNote(Note? note) {
+    if (note == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择一个笔记')),
+      );
+      return;
+    }
+    // TODO: 实现导出功能
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('导出功能即将推出')),
+    );
+  }
+
+  /// 分享笔记
+  void _shareNote(Note? note) {
+    if (note == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择一个笔记')),
+      );
+      return;
+    }
+    // TODO: 实现分享功能
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('分享功能即将推出')),
+    );
+  }
+
+  /// 删除当前笔记
+  void _deleteCurrentNote(Note? note) {
+    if (note == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择一个笔记')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除笔记'),
+        content: Text('确定要删除 "${note.title}" 吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _notesBloc.add(DeleteNote(note));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('"${note.title}" 已删除')),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

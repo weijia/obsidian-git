@@ -516,27 +516,51 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     );
   }
 
-  /// 创建表格节点
+  /// 创建表格节点 - 使用正确的 AppFlowy Editor 6.x API
   Node _createTableNode({required int rows, required int cols}) {
-    // 创建表格节点
+    // 创建表格节点，添加必要的默认尺寸属性
     final tableNode = Node(
       type: TableBlockKeys.type,
       attributes: {
         TableBlockKeys.colsLen: cols,
         TableBlockKeys.rowsLen: rows,
+        TableBlockKeys.colDefaultWidth: 120.0,
+        TableBlockKeys.rowDefaultHeight: 40.0,
+        TableBlockKeys.colMinimumWidth: 40.0,
+        TableBlockKeys.borderWidth: 1.0,
       },
     );
 
-    // 按列优先顺序添加单元格
+    // 按列优先顺序添加单元格（这是 AppFlowy Editor 的要求）
     for (var col = 0; col < cols; col++) {
       for (var row = 0; row < rows; row++) {
         final content = row == 0 ? '标题 ${col + 1}' : '';
-        final cell = tableCellNode(content, row, col);
+        final cell = _createTableCell(content: content, row: row, col: col);
         tableNode.insert(cell);
       }
     }
 
     return tableNode;
+  }
+
+  /// 创建表格单元格节点
+  Node _createTableCell({
+    required String content,
+    required int row,
+    required int col,
+  }) {
+    return Node(
+      type: TableCellBlockKeys.type,
+      attributes: {
+        TableCellBlockKeys.rowPosition: row,
+        TableCellBlockKeys.colPosition: col,
+        TableCellBlockKeys.width: 120.0,
+        TableCellBlockKeys.height: 40.0,
+      },
+      children: [
+        paragraphNode(text: content),
+      ],
+    );
   }
 
   /// 插入表格

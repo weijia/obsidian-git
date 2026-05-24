@@ -38,3 +38,12 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 flutter {
     source = "../.."
 }
+
+// 强制解析所有依赖的 compileSdk 为 36，解决 AAR metadata 检查失败
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "com.android.support" && !requested.name.contains("multidex")) {
+            useVersion("36.0.0")
+        }
+    }
+}

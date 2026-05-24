@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
 
 import 'screens/home_screen.dart';
 
@@ -14,6 +16,13 @@ class ObsidianGitApp extends StatelessWidget {
     return MaterialApp(
       title: 'Obsidian Git',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        AppFlowyEditorLocalizations.delegate,
+      ],
+      supportedLocales: AppFlowyEditorLocalizations.delegate.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,

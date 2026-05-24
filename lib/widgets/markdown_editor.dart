@@ -444,12 +444,15 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   /// 将 Markdown 转换为 AppFlowy Editor 文档
   Document _markdownToDocument(String markdown) {
     try {
+      if (markdown.trim().isEmpty) {
+        // 空内容时创建带初始段落的文档，确保可编辑
+        return EditorState.blank(withInitialText: true).document;
+      }
       // 使用 AppFlowy Editor 的 Markdown 解析器
-      // markdownToDocument 直接返回 Document
       return markdownToDocument(markdown);
     } catch (e) {
-      // 如果解析失败，返回空文档
-      return Document.blank();
+      // 如果解析失败，返回带初始段落的文档
+      return EditorState.blank(withInitialText: true).document;
     }
   }
 

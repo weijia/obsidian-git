@@ -7,6 +7,9 @@ on:
     tags-ignore:
       - '**'
 
+env:
+  FLUTTER_VERSION: '3.41.4'
+
 jobs:
   generate-version:
     runs-on: ubuntu-latest
@@ -30,7 +33,6 @@ jobs:
           chmod +x scripts/generate_version.sh
           source <(sed 's/^echo /export /g' scripts/generate_version.sh)
 
-          # 输出版本信息
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "version_number=$VERSION_NUMBER" >> $GITHUB_OUTPUT
           echo "build_type=$BUILD_TYPE" >> $GITHUB_OUTPUT
@@ -38,7 +40,6 @@ jobs:
           echo "build_datetime=$BUILD_DATETIME" >> $GITHUB_OUTPUT
           echo "build_timezone=$BUILD_TIMEZONE" >> $GITHUB_OUTPUT
 
-          # 生成 --dart-define 参数
           DART_DEFINES="--dart-define=VERSION_NAME=$VERSION_NAME"
           DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TYPE=$BUILD_TYPE"
           DART_DEFINES="$DART_DEFINES --dart-define=VERSION_TAG=$BUILD_TAG"
@@ -60,7 +61,6 @@ jobs:
           echo "  DateTime:      ${{ steps.version.outputs.build_datetime || 'N/A' }}"
           echo "  Timezone:      ${{ steps.version.outputs.build_timezone || 'N/A' }}"
           echo "  Commit:        ${{ github.sha }}"
-          echo "  Timezone:      UTC+8 (Asia/Shanghai)"
           echo "==============================="
 
   # ==================== Android ====================
@@ -77,7 +77,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
       - name: Get dependencies
@@ -85,19 +85,17 @@ jobs:
 
       - name: Build APK
         run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
           flutter build apk --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
             --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
+            ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Build App Bundle
         run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
           flutter build appbundle --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
             --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
+            ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -120,7 +118,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
       - name: Get dependencies
@@ -128,11 +126,10 @@ jobs:
 
       - name: Build iOS (no codesign)
         run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
           flutter build ios --release --no-codesign \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
             --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
+            ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Upload iOS build
         uses: actions/upload-artifact@v4
@@ -149,7 +146,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
       - name: Get dependencies
@@ -157,11 +154,10 @@ jobs:
 
       - name: Build macOS
         run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
           flutter build macos --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
             --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
+            ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Create ZIP
         run: |
@@ -188,7 +184,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
       - name: Get dependencies
@@ -196,11 +192,10 @@ jobs:
 
       - name: Build Linux
         run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
           flutter build linux --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
             --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
+            ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Create TAR
         run: |
@@ -213,7 +208,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64-${{ needs.generate-version.outputs.version_name }}
-          path: build/linux/x64/release/bundle/obsidian-git-linux-x64.tar.gz
+          path: obsidian-git-linux-x64.tar.gz
 
   # ==================== Windows ====================
   build-windows:
@@ -224,7 +219,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
       - name: Get dependencies
@@ -233,11 +228,10 @@ jobs:
       - name: Build Windows
         shell: bash
         run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
           flutter build windows --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
             --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
+            ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Create ZIP
         shell: pwsh
@@ -250,35 +244,6 @@ jobs:
           name: windows-x64-${{ needs.generate-version.outputs.version_name }}
           path: obsidian-git-windows-x64.zip
 
-  # ==================== Web ====================
-  build-web:
-    needs: generate-version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.0'
-          channel: 'stable'
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Build Web
-        run: |
-          DART_DEFINES="${{ needs.generate-version.outputs.dart_defines }}"
-          flutter build web --release \
-            --build-name=${{ needs.generate-version.outputs.version_name }} \
-            --build-number=${{ needs.generate-version.outputs.version_number }} \
-            $DART_DEFINES
-
-      - name: Upload Web build
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-${{ needs.generate-version.outputs.version_name }}
-          path: build/web/
-
   # ==================== Release Summary ====================
   build-summary:
     needs:
@@ -288,7 +253,6 @@ jobs:
       - build-macos
       - build-linux
       - build-windows
-      - build-web
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -313,5 +277,4 @@ jobs:
           echo "    macOS:    ${{ needs.build-macos.result }}"
           echo "    Linux:    ${{ needs.build-linux.result }}"
           echo "    Windows:  ${{ needs.build-windows.result }}"
-          echo "    Web:      ${{ needs.build-web.result }}"
           echo "========================================"

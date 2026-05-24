@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.obsidiangit.obsidian_git"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

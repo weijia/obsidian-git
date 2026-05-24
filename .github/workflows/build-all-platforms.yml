@@ -85,10 +85,7 @@ jobs:
 
       - name: Build APK
         run: |
-          flutter build apk --release \
-            --build-name=${{ needs.generate-version.outputs.version_name }} \
-            --build-number=${{ needs.generate-version.outputs.version_number }} \
-            ${{ needs.generate-version.outputs.dart_defines }}
+          cd android && ./gradlew assembleRelease --stacktrace 2>&1 | tail -100
 
       - name: Build App Bundle
         run: |

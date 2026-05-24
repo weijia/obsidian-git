@@ -62,6 +62,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       children: [
         // 工具栏
@@ -70,12 +72,74 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(8),
             ),
             child: AppFlowyEditor(
               editorState: _editorState,
               editable: !widget.readOnly,
+              // 配置编辑器样式，与 App 主题协调
+              editorStyle: EditorStyle.desktop(
+                padding: const EdgeInsets.all(16),
+                backgroundColor: colorScheme.surface,
+                cursorColor: colorScheme.primary,
+                selectionColor: colorScheme.primaryContainer.withOpacity(0.4),
+                textStyleConfiguration: TextStyleConfiguration(
+                  text: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 16,
+                    height: 1.5,
+                  ),
+                  bold: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  italic: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  underline: TextStyle(
+                    color: colorScheme.onSurface,
+                    decoration: TextDecoration.underline,
+                  ),
+                  strikethrough: TextStyle(
+                    color: colorScheme.onSurface,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                  code: TextStyle(
+                    color: colorScheme.primary,
+                    backgroundColor: colorScheme.primaryContainer.withOpacity(0.3),
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                  ),
+                ),
+                headingStyleConfiguration: HeadingStyleConfiguration(
+                  h1: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h2: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h3: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              // 配置块组件样式
+              blockComponentBuilders: {
+                ...standardBlockComponentBuilderMap,
+                'table': TableBlockComponentBuilder(
+                  configuration: BlockComponentConfiguration(
+                    padding: const EdgeInsets.all(8),
+                  ),
+                ),
+              },
             ),
           ),
         ),
@@ -84,13 +148,15 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   }
 
   Widget _buildToolbar() {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: colorScheme.surfaceContainerLow,
         border: Border(
           bottom: BorderSide(
-            color: Theme.of(context).dividerColor,
+            color: colorScheme.outlineVariant.withOpacity(0.5),
           ),
         ),
       ),
@@ -110,7 +176,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
               onPressed: () => _insertHeading(2),
             ),
             const SizedBox(width: 8),
-            const VerticalDivider(),
+            _buildDivider(),
             const SizedBox(width: 8),
             // 格式化
             _buildToolbarButton(
@@ -134,7 +200,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
               onPressed: _toggleStrikethrough,
             ),
             const SizedBox(width: 8),
-            const VerticalDivider(),
+            _buildDivider(),
             const SizedBox(width: 8),
             // 列表
             _buildToolbarButton(
@@ -153,7 +219,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
               onPressed: _toggleTodoList,
             ),
             const SizedBox(width: 8),
-            const VerticalDivider(),
+            _buildDivider(),
             const SizedBox(width: 8),
             // 其他
             _buildToolbarButton(
@@ -192,13 +258,33 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     required String tooltip,
     required VoidCallback onPressed,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Tooltip(
       message: tooltip,
-      child: IconButton(
-        icon: Icon(icon, size: 20),
-        onPressed: onPressed,
-        splashRadius: 20,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            child: Icon(
+              icon,
+              size: 20,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Container(
+      height: 20,
+      width: 1,
+      color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
     );
   }
 
@@ -373,60 +459,161 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   /// 插入表格
   void _insertTable({required int rows, required int cols}) {
     final selection = _editorState.selection;
-    if (selection == null) return;
 
-    final transaction = _editorState.transaction;
+    // 如果没有选择，在文档末尾插入
+    if (selection == null) {
+      _insertTableAtEnd(rows: rows, cols: cols);
+      return;
+    }
 
-    // 创建表格节点
-    final tableNode = Node(
-      type: 'table',
-      children: [
-        for (var i = 0; i < rows; i++)
-          Node(
-            type: 'table_row',
-            children: [
-              for (var j = 0; j < cols; j++)
-                Node(
-                  type: 'table_cell',
-                  children: [
-                    Node(
-                      type: 'paragraph',
-                      attributes: {
-                        'delta': [
-                          {
-                            'insert': i == 0 ? '标题 ${j + 1}' : '',
-                          },
-                        ],
-                      },
-                    ),
-                  ],
-                ),
-            ],
-          ),
-      ],
-    );
+    try {
+      final transaction = _editorState.transaction;
 
-    transaction.insertNode(selection.start.path, tableNode);
-    _editorState.apply(transaction);
+      // 创建表格节点 - 使用正确的 AppFlowy Editor 表格结构
+      final tableNode = Node(
+        type: 'table',
+        attributes: {
+          'cols_len': cols,
+        },
+        children: [
+          for (var i = 0; i < rows; i++)
+            Node(
+              type: 'table_row',
+              attributes: {
+                'row_position': i,
+              },
+              children: [
+                for (var j = 0; j < cols; j++)
+                  Node(
+                    type: 'table_cell',
+                    attributes: {
+                      'col_position': j,
+                      'row_position': i,
+                    },
+                    children: [
+                      Node(
+                        type: 'paragraph',
+                        attributes: {
+                          'delta': [
+                            {
+                              'insert': i == 0 ? '标题 ${j + 1}' : '',
+                            },
+                          ],
+                        },
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+        ],
+      );
 
-    // 显示表格操作提示
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('表格已插入。点击表格单元格后，使用右键菜单或编辑器工具栏操作表格。'),
-        duration: Duration(seconds: 3),
-      ),
-    );
+      // 在当前选择位置后插入表格
+      final node = _editorState.getNodeAtPath(selection.end.path);
+      if (node != null) {
+        // 在当前节点后插入
+        transaction.insertNode(selection.end.path.next, tableNode);
+      } else {
+        // 如果无法获取节点，在文档末尾插入
+        _insertTableAtEnd(rows: rows, cols: cols);
+        return;
+      }
+
+      _editorState.apply(transaction);
+
+      // 显示成功提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已插入 ${rows}x$cols 表格'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      // 如果插入失败，尝试在末尾插入
+      _insertTableAtEnd(rows: rows, cols: cols);
+    }
+  }
+
+  /// 在文档末尾插入表格
+  void _insertTableAtEnd({required int rows, required int cols}) {
+    try {
+      final transaction = _editorState.transaction;
+      final document = _editorState.document;
+
+      // 获取文档最后一个节点的路径
+      final lastNode = document.root.children.lastOrNull;
+      Path insertPath;
+      if (lastNode != null) {
+        insertPath = lastNode.path.next;
+      } else {
+        insertPath = [0];
+      }
+
+      // 创建表格节点
+      final tableNode = Node(
+        type: 'table',
+        attributes: {
+          'cols_len': cols,
+        },
+        children: [
+          for (var i = 0; i < rows; i++)
+            Node(
+              type: 'table_row',
+              attributes: {
+                'row_position': i,
+              },
+              children: [
+                for (var j = 0; j < cols; j++)
+                  Node(
+                    type: 'table_cell',
+                    attributes: {
+                      'col_position': j,
+                      'row_position': i,
+                    },
+                    children: [
+                      Node(
+                        type: 'paragraph',
+                        attributes: {
+                          'delta': [
+                            {
+                              'insert': i == 0 ? '标题 ${j + 1}' : '',
+                            },
+                          ],
+                        },
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+        ],
+      );
+
+      transaction.insertNode(insertPath, tableNode);
+      _editorState.apply(transaction);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已插入 ${rows}x$cols 表格'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('插入表格失败: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   void _insertImage() {
-    // TODO: 实现图片插入
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('图片插入功能即将推出')),
     );
   }
 
   void _insertLink() {
-    // TODO: 实现链接插入
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('链接插入功能即将推出')),
     );

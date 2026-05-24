@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -239,8 +240,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final privateKeyPath = p.join(sshDir.path, 'id_ed25519');
       await File(privateKeyPath).writeAsString(privateKey);
-      await File(privateKeyPath)
-          .setMode(FileMode.permissionsOnly(owner: true));
 
       // 保存路径
       final prefs = await SharedPreferences.getInstance();

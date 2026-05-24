@@ -385,8 +385,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 : () => _notesBloc.add(const SyncWithGit()),
             tooltip: '同步到 Git',
           ),
-          // 源码模式切换按钮
-          _SourceModeToggle(),
           // 更多菜单
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),

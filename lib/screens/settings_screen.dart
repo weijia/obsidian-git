@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:git2dart/git2dart.dart';
 import '../models/git_config.dart';
 import '../version.dart';
 
@@ -37,7 +38,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _initGit2dart();
     _loadConfig();
+  }
+
+  /// 初始化 git2dart（Android 需要特殊初始化）
+  Future<void> _initGit2dart() async {
+    try {
+      if (Platform.isAndroid) {
+        await PlatformSpecific.androidInitialize();
+      }
+    } catch (e) {
+      debugPrint('git2dart 初始化失败: $e');
+    }
   }
 
   Future<void> _loadConfig() async {
@@ -100,32 +113,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // 检查目录是否已存在
       final dir = Directory(localPath);
       if (await dir.exists()) {
-        // 目录已存在，尝试拉取
-        final pullResult = await Process.run(
-          'git',
-          ['pull', 'origin', _branchController.text],
-          workingDirectory: localPath,
-        );
-        if (pullResult.exitCode == 0) {
+        // 目录已存在，尝试打开并拉取
+        try {
+          final repo = Repository.open(localPath);
+          
+          // 配置远程
+          final remote = Remote.lookup(repo: repo, name: 'origin');
+          
+          // 拉取
+          remote.fetch(
+            refspecs: ['+refs/heads/${_branchController.text}:refs/remotes/origin/${_branchController.text}'],
+          );
+          
+          // 合并
+          final fetchHead = repo.resolveReference('FETCH_HEAD');
+          repo.checkout(
+            target: fetchHead,
+            strategy: {
+              CheckoutStrategy.safe,
+              CheckoutStrategy.recreateMissing,
+            },
+          );
+          
+          remote.free();
+          repo.free();
+          
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('git_local_path', localPath);
           _showStatus('仓库已更新', success: true);
-        } else {
-          _showStatus('更新失败: ${pullResult.stderr}', success: false);
+        } catch (e) {
+          _showStatus('更新失败: $e', success: false);
         }
       } else {
         // 克隆新仓库
-        final result = await Process.run(
-          'git',
-          ['clone', '-b', _branchController.text, repoUrl, localPath],
-        );
-
-        if (result.exitCode == 0) {
+        try {
+          Repository.clone(
+            url: repoUrl,
+            localPath: localPath,
+            options: CloneOptions(
+              checkoutBranch: _branchController.text,
+              fetchOptions: FetchOptions(
+                callbacks: _createRemoteCallbacks(),
+              ),
+            ),
+          );
+          
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('git_local_path', localPath);
           _showStatus('仓库克隆成功', success: true);
-        } else {
-          _showStatus('克隆失败: ${result.stderr}', success: false);
+        } catch (e) {
+          _showStatus('克隆失败: $e', success: false);
         }
       }
     } catch (e) {
@@ -133,6 +170,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       setState(() => _isCloning = false);
     }
+  }
+
+  /// 创建远程回调（用于 SSH 认证）
+  RemoteCallbacks _createRemoteCallbacks() {
+    return RemoteCallbacks(
+      credentials: (url, usernameFromUrl, allowedTypes) {
+        if (allowedTypes.contains(CredentialType.sshKey) && _sshKeyPath != null) {
+          return Credential.sshKey(
+            username: usernameFromUrl ?? 'git',
+            publicKey: _sshPublicKey,
+            privateKey: _sshKeyPath,
+            passphrase: null,
+          );
+        }
+        return null;
+      },
+    );
   }
 
   /// 手动同步
@@ -148,64 +202,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
 
+      // 打开仓库
+      final repo = Repository.open(localPath);
+      
       // 配置 git 用户信息
+      final config = repo.config;
       final username = _usernameController.text.trim();
       final email = _emailController.text.trim();
       if (username.isNotEmpty) {
-        await Process.run('git', ['config', 'user.name', username],
-            workingDirectory: localPath);
+        config.setString('user.name', username);
       }
       if (email.isNotEmpty) {
-        await Process.run('git', ['config', 'user.email', email],
-            workingDirectory: localPath);
+        config.setString('user.email', email);
       }
 
       // 拉取远程更新
-      final pullResult = await Process.run(
-        'git',
-        ['pull', 'origin', _branchController.text],
-        workingDirectory: localPath,
+      final remote = Remote.lookup(repo: repo, name: 'origin');
+      remote.fetch(
+        callbacks: _createRemoteCallbacks(),
+      );
+      
+      // 合并
+      final fetchHead = repo.resolveReference('FETCH_HEAD');
+      repo.checkout(
+        target: fetchHead,
+        strategy: {
+          CheckoutStrategy.safe,
+          CheckoutStrategy.recreateMissing,
+        },
       );
 
-      // 添加所有更改
-      await Process.run('git', ['add', '.'], workingDirectory: localPath);
+      // 获取当前分支的 HEAD
+      final head = repo.head;
+      
+      // 获取索引
+      final index = repo.index;
+      index.addAll(['.']);
+      index.write();
 
-      // 检查是否有更改
-      final statusResult = await Process.run(
-        'git',
-        ['status', '--porcelain'],
-        workingDirectory: localPath,
+      // 创建提交
+      final signature = Signature.create(
+        name: username.isNotEmpty ? username : 'Obsidian Git',
+        email: email.isNotEmpty ? email : 'user@example.com',
+      );
+      
+      final treeOid = index.writeTree();
+      final tree = repo.lookupTree(treeOid);
+      
+      repo.createCommit(
+        updateReference: 'HEAD',
+        author: signature,
+        committer: signature,
+        message: 'Auto sync ${DateTime.now().toIso8601String()}',
+        tree: tree,
+        parents: head.target.isEmpty ? [] : [repo.lookupCommit(head.target)],
       );
 
-      if (statusResult.stdout.toString().trim().isNotEmpty) {
-        // 提交
-        final now = DateTime.now();
-        final commitMsg = 'Auto sync ${now.toIso8601String()}';
-        await Process.run(
-          'git',
-          ['commit', '-m', commitMsg],
-          workingDirectory: localPath,
-        );
+      // 推送
+      remote.push(
+        refspecs: ['refs/heads/${_branchController.text}:refs/heads/${_branchController.text}'],
+        callbacks: _createRemoteCallbacks(),
+      );
 
-        // 推送
-        final pushResult = await Process.run(
-          'git',
-          ['push', 'origin', _branchController.text],
-          workingDirectory: localPath,
-        );
+      // 释放资源
+      tree.free();
+      index.free();
+      head.free();
+      remote.free();
+      repo.free();
 
-        if (pushResult.exitCode == 0) {
-          _showStatus('同步成功（已推送）', success: true);
-        } else {
-          _showStatus('推送失败: ${pushResult.stderr}', success: false);
-        }
-      } else {
-        if (pullResult.exitCode == 0) {
-          _showStatus('同步成功（已是最新）', success: true);
-        } else {
-          _showStatus('拉取失败: ${pullResult.stderr}', success: false);
-        }
-      }
+      _showStatus('同步成功', success: true);
     } catch (e) {
       _showStatus('同步失败: $e', success: false);
     } finally {

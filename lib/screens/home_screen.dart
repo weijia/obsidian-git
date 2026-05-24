@@ -592,7 +592,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _notesBloc.add(DeleteNote(note));
+              _notesBloc.add(DeleteNote(note.filePath));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('"${note.title}" 已删除')),
               );

@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _sidebarWidth = 280;
   bool _isInitialized = false;
   String? _initError;
+  bool _isSourceMode = false; // 源码模式状态
 
   @override
   void initState() {
@@ -218,7 +219,15 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: MarkdownEditor(note: state.selectedNote!),
+            child: MarkdownEditor(
+              note: state.selectedNote!,
+              isSourceMode: _isSourceMode,
+              onSourceModeChanged: (value) {
+                setState(() {
+                  _isSourceMode = value;
+                });
+              },
+            ),
           ),
         ),
         // 同步状态栏
@@ -346,6 +355,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text('同步中...'),
               ],
             ),
+          // 源码模式切换按钮
+          TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _isSourceMode = !_isSourceMode;
+              });
+            },
+            icon: Icon(
+              _isSourceMode ? Icons.visibility : Icons.code,
+              size: 18,
+            ),
+            label: Text(_isSourceMode ? '预览' : '源码'),
+            style: TextButton.styleFrom(
+              foregroundColor: _isSourceMode
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              backgroundColor: _isSourceMode
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ),
+          // 同步按钮
           IconButton(
             icon: const Icon(Icons.sync),
             onPressed: state.isSyncing
@@ -353,6 +385,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 : () => _notesBloc.add(const SyncWithGit()),
             tooltip: '同步到 Git',
           ),
+          // 源码模式切换按钮
+          _SourceModeToggle(),
+          // 更多菜单
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             tooltip: '更多操作',

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:go_git_dart/go_git_dart.dart' as go_git_dart;
 import 'package:dart_git/dart_git.dart' as dart_git;
+import 'package:dart_git/status.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';

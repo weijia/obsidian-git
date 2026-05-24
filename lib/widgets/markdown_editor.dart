@@ -81,7 +81,6 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
               // 配置编辑器样式，与 App 主题协调
               editorStyle: EditorStyle.desktop(
                 padding: const EdgeInsets.all(16),
-                backgroundColor: colorScheme.surface,
                 cursorColor: colorScheme.primary,
                 selectionColor: colorScheme.primaryContainer.withOpacity(0.4),
                 textStyleConfiguration: TextStyleConfiguration(
@@ -134,11 +133,6 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
               // 配置块组件样式
               blockComponentBuilders: {
                 ...standardBlockComponentBuilderMap,
-                'table': TableBlockComponentBuilder(
-                  configuration: BlockComponentConfiguration(
-                    padding: const EdgeInsets.all(8),
-                  ),
-                ),
               },
             ),
           ),

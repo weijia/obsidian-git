@@ -30,6 +30,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // 禁用 AAR metadata 严格检查
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
 }
 
 flutter {

@@ -466,6 +466,30 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     );
   }
 
+  /// 创建表格节点 - 使用正确的 AppFlowy Editor 6.x 结构
+  Node _createTableNode({required int rows, required int cols}) {
+    // 创建表格节点，使用正确的属性名（驼峰命名）
+    final tableNode = Node(
+      type: TableBlockKeys.type,
+      attributes: {
+        TableBlockKeys.colsLen: cols,
+        TableBlockKeys.rowsLen: rows,
+      },
+    );
+
+    // 按列优先顺序添加单元格（这是 AppFlowy Editor 的要求）
+    for (var col = 0; col < cols; col++) {
+      for (var row = 0; row < rows; row++) {
+        // 第一行作为标题
+        final content = row == 0 ? '标题 ${col + 1}' : '';
+        final cell = tableCellNode(content, row, col);
+        tableNode.insert(cell);
+      }
+    }
+
+    return tableNode;
+  }
+
   /// 插入表格
   void _insertTable({required int rows, required int cols}) {
     final selection = _editorState.selection;
@@ -478,60 +502,19 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
     try {
       final transaction = _editorState.transaction;
-
-      // 创建表格节点 - 使用正确的 AppFlowy Editor 表格结构
-      final tableNode = Node(
-        type: 'table',
-        attributes: {
-          'cols_len': cols,
-        },
-        children: [
-          for (var i = 0; i < rows; i++)
-            Node(
-              type: 'table_row',
-              attributes: {
-                'row_position': i,
-              },
-              children: [
-                for (var j = 0; j < cols; j++)
-                  Node(
-                    type: 'table_cell',
-                    attributes: {
-                      'col_position': j,
-                      'row_position': i,
-                    },
-                    children: [
-                      Node(
-                        type: 'paragraph',
-                        attributes: {
-                          'delta': [
-                            {
-                              'insert': i == 0 ? '标题 ${j + 1}' : '',
-                            },
-                          ],
-                        },
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-        ],
-      );
+      final tableNode = _createTableNode(rows: rows, cols: cols);
 
       // 在当前选择位置后插入表格
       final node = _editorState.getNodeAtPath(selection.end.path);
       if (node != null) {
-        // 在当前节点后插入
         transaction.insertNode(selection.end.path.next, tableNode);
       } else {
-        // 如果无法获取节点，在文档末尾插入
         _insertTableAtEnd(rows: rows, cols: cols);
         return;
       }
 
       _editorState.apply(transaction);
 
-      // 显示成功提示
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('已插入 ${rows}x$cols 表格'),
@@ -539,7 +522,6 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         ),
       );
     } catch (e) {
-      // 如果插入失败，尝试在末尾插入
       _insertTableAtEnd(rows: rows, cols: cols);
     }
   }
@@ -559,45 +541,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         insertPath = [0];
       }
 
-      // 创建表格节点
-      final tableNode = Node(
-        type: 'table',
-        attributes: {
-          'cols_len': cols,
-        },
-        children: [
-          for (var i = 0; i < rows; i++)
-            Node(
-              type: 'table_row',
-              attributes: {
-                'row_position': i,
-              },
-              children: [
-                for (var j = 0; j < cols; j++)
-                  Node(
-                    type: 'table_cell',
-                    attributes: {
-                      'col_position': j,
-                      'row_position': i,
-                    },
-                    children: [
-                      Node(
-                        type: 'paragraph',
-                        attributes: {
-                          'delta': [
-                            {
-                              'insert': i == 0 ? '标题 ${j + 1}' : '',
-                            },
-                          ],
-                        },
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-        ],
-      );
-
+      final tableNode = _createTableNode(rows: rows, cols: cols);
       transaction.insertNode(insertPath, tableNode);
       _editorState.apply(transaction);
 

@@ -1,30 +1,28 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:go_git_dart/go_git_dart.dart' as go_git_dart;
-import 'package:dart_git/dart_git.dart' as dart_git;
-import 'package:dart_git/status.dart';
+import 'package:git2dart/git2dart.dart' as git2;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/git_config.dart';
 
-/// Git 服务 - 使用 GitJournal 方案
-/// 移动端：go_git_dart (Go FFI) 处理网络操作
-/// 所有平台：dart_git 处理本地操作
+/// Git 服务 - 使用 git2dart (libgit2 FFI)
+/// 支持 SSH 和 HTTPS 协议，DNS 走系统原生 API
 class GitService {
   static final GitService _instance = GitService._internal();
   factory GitService() => _instance;
   GitService._internal();
 
-  go_git_dart.GitBindings? _gitBindings;
   bool _isInitialized = false;
 
-  /// 初始化 Git 服务
+  /// 初始化 Git 服务（Android 上需要调用 androidInitialize）
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
-      _gitBindings = go_git_dart.GitBindings();
+      // Android 上初始化 libgit2 SSL 证书
+      if (Platform.isAndroid) {
+        git2.PlatformSpecific.androidInitialize();
+      }
       _isInitialized = true;
     } catch (e) {
       print('GitService 初始化失败: $e');
@@ -32,55 +30,50 @@ class GitService {
     }
   }
 
-  /// 检测 URL 是否为 SSH 格式
-  bool isSshUrl(String url) {
-    return url.startsWith('git@') || url.startsWith('ssh://');
-  }
-
-  /// 将 HTTPS URL 转换为 SSH URL
-  String convertHttpsToSsh(String url) {
-    // 匹配 https://github.com/user/repo.git
-    final httpsPattern = RegExp(r'^https?://([^/]+)/([^/]+)/([^/]+?)(?:\.git)?$');
-    final match = httpsPattern.firstMatch(url);
-    if (match != null) {
-      final host = match.group(1);
-      final user = match.group(2);
-      final repo = match.group(3);
-      return 'git@$host:$user/$repo.git';
+  /// 构建 SSH 认证回调
+  git2.Callbacks _buildCallbacks({
+    required String? publicKey,
+    required String? privateKey,
+    String? passphrase,
+  }) {
+    if (privateKey != null && privateKey.isNotEmpty) {
+      return git2.Callbacks(
+        credentials: git2.KeypairFromMemory(
+          username: 'git',
+          pubKey: publicKey ?? '',
+          privateKey: privateKey,
+          passPhrase: passphrase ?? '',
+        ),
+      );
     }
-    return url;
+    return const git2.Callbacks();
   }
 
   /// 克隆仓库
   Future<void> clone({
     required String url,
     required String localPath,
+    String? publicKey,
     String? privateKey,
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
 
-    // 检查是否为 SSH URL
-    if (!isSshUrl(url)) {
-      throw GitSshRequiredException(
-        'go_git_dart 只支持 SSH 协议。\n'
-        '当前 URL: $url\n'
-        '请使用 SSH URL (git@host:user/repo.git) 或转换为 SSH:\n'
-        '${convertHttpsToSsh(url)}'
-      );
-    }
-
-    // 检查是否有私钥
-    if (privateKey == null || privateKey.isEmpty) {
-      throw GitAuthException('SSH 克隆需要提供私钥。请在设置中生成或导入 SSH 密钥。');
-    }
-
     try {
-      _gitBindings!.clone(
-        url,
-        localPath,
-        utf8.encode(privateKey),
-        privateKeyPassword ?? '',
+      // 确保目标目录的父目录存在
+      final parentDir = Directory(localPath).parent;
+      if (!await parentDir.exists()) {
+        await parentDir.create(recursive: true);
+      }
+
+      git2.Repository.clone(
+        url: url,
+        localPath: localPath,
+        callbacks: _buildCallbacks(
+          publicKey: publicKey,
+          privateKey: privateKey,
+          passphrase: privateKeyPassword,
+        ),
       );
     } catch (e) {
       print('克隆失败: $e');
@@ -92,23 +85,24 @@ class GitService {
   Future<void> fetch({
     required String localPath,
     String remoteName = 'origin',
+    String? publicKey,
     String? privateKey,
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
 
-    // 检查是否有私钥
-    if (privateKey == null || privateKey.isEmpty) {
-      throw GitAuthException('SSH 操作需要提供私钥。请在设置中生成或导入 SSH 密钥。');
-    }
-
     try {
-      _gitBindings!.fetch(
-        remoteName,
-        localPath,
-        utf8.encode(privateKey),
-        privateKeyPassword ?? '',
+      final repo = git2.Repository.open(localPath);
+      final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+      remote.fetch(
+        callbacks: _buildCallbacks(
+          publicKey: publicKey,
+          privateKey: privateKey,
+          passphrase: privateKeyPassword,
+        ),
       );
+      remote.free();
+      repo.free();
     } catch (e) {
       print('获取更新失败: $e');
       rethrow;
@@ -119,135 +113,169 @@ class GitService {
   Future<void> push({
     required String localPath,
     String remoteName = 'origin',
+    String? publicKey,
     String? privateKey,
     String? privateKeyPassword,
   }) async {
     if (!_isInitialized) await initialize();
 
-    // 检查是否有私钥
-    if (privateKey == null || privateKey.isEmpty) {
-      throw GitAuthException('SSH 操作需要提供私钥。请在设置中生成或导入 SSH 密钥。');
-    }
-
     try {
-      _gitBindings!.push(
-        remoteName,
-        localPath,
-        utf8.encode(privateKey),
-        privateKeyPassword ?? '',
+      final repo = git2.Repository.open(localPath);
+      final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+      remote.push(
+        callbacks: _buildCallbacks(
+          publicKey: publicKey,
+          privateKey: privateKey,
+          passphrase: privateKeyPassword,
+        ),
       );
+      remote.free();
+      repo.free();
     } catch (e) {
       print('推送失败: $e');
       rethrow;
     }
   }
 
-  /// 获取默认分支名称
-  Future<String> getDefaultBranch({
-    required String url,
-    String? privateKey,
-    String? privateKeyPassword,
-  }) async {
-    if (!_isInitialized) await initialize();
-
-    try {
-      return _gitBindings!.defaultBranch(
-        url,
-        privateKey != null ? utf8.encode(privateKey) : utf8.encode(''),
-        privateKeyPassword ?? '',
-      );
-    } catch (e) {
-      print('获取默认分支失败: $e');
-      rethrow;
-    }
-  }
-
-  /// 生成 RSA 密钥对
-  Future<Map<String, String>> generateRsaKeys() async {
-    if (!_isInitialized) await initialize();
-
-    try {
-      final (publicKey, privateKey) = _gitBindings!.generateRsaKeys();
-      return {
-        'publicKey': publicKey,
-        'privateKey': privateKey,
-      };
-    } catch (e) {
-      print('生成密钥失败: $e');
-      rethrow;
-    }
-  }
-
-  /// 使用 dart_git 初始化本地仓库
+  /// 使用 git2dart 初始化本地仓库
   void initLocalRepo(String path) {
-    dart_git.GitRepository.init(path);
+    git2.Repository.init(path: path);
   }
 
-  /// 使用 dart_git 添加文件到暂存区（同步方法）
+  /// 添加文件到暂存区
   void add(String repoPath, String filePattern) {
-    final repo = dart_git.GitRepository.load(repoPath);
-    repo.add(filePattern);
-    repo.close();
+    final repo = git2.Repository.open(repoPath);
+    final index = repo.index;
+    if (filePattern == '.') {
+      // 添加所有文件
+      index.addAll(repo.status.keys.toList());
+    } else {
+      index.add(filePattern);
+    }
+    index.write();
+    repo.free();
   }
 
-  /// 使用 dart_git 提交更改
+  /// 提交更改
   void commit({
     required String repoPath,
     required String message,
     required String authorName,
     required String authorEmail,
   }) {
-    final repo = dart_git.GitRepository.load(repoPath);
-    final author = dart_git.GitAuthor(name: authorName, email: authorEmail);
-    repo.commit(message: message, author: author);
-    repo.close();
+    final repo = git2.Repository.open(repoPath);
+    repo.index.write();
+
+    final signature = git2.Signature.create(
+      name: authorName,
+      email: authorEmail,
+      time: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      offset: 0,
+    );
+
+    // 获取所有暂存的文件
+    final stagedFiles = <String>[];
+    for (final entry in repo.status.entries) {
+      if (entry.value.contains(git2.GitStatus.indexNew) ||
+          entry.value.contains(git2.GitStatus.indexModified) ||
+          entry.value.contains(git2.GitStatus.indexDeleted) ||
+          entry.value.contains(git2.GitStatus.indexRenamed) ||
+          entry.value.contains(git2.GitStatus.indexTypeChange)) {
+        stagedFiles.add(entry.key);
+      }
+    }
+
+    if (stagedFiles.isNotEmpty) {
+      repo.createCommitOnHead(stagedFiles, signature, signature, message);
+    }
+    repo.free();
   }
 
-  /// 完整的同步流程：fetch -> merge -> commit -> push
+  /// 检查是否有未提交的更改
+  bool hasChanges(String repoPath) {
+    final repo = git2.Repository.open(repoPath);
+    final status = repo.status;
+    repo.free();
+
+    for (final entry in status.entries) {
+      if (entry.value.contains(git2.GitStatus.indexNew) ||
+          entry.value.contains(git2.GitStatus.indexModified) ||
+          entry.value.contains(git2.GitStatus.indexDeleted) ||
+          entry.value.contains(git2.GitStatus.indexRenamed) ||
+          entry.value.contains(git2.GitStatus.indexTypeChange) ||
+          entry.value.contains(git2.GitStatus.worktreeNew) ||
+          entry.value.contains(git2.GitStatus.worktreeModified) ||
+          entry.value.contains(git2.GitStatus.worktreeDeleted) ||
+          entry.value.contains(git2.GitStatus.worktreeRenamed) ||
+          entry.value.contains(git2.GitStatus.worktreeTypeChange)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// 完整的同步流程：fetch -> merge -> add -> commit -> push
   Future<SyncResult> sync({
     required String localPath,
     required String authorName,
     required String authorEmail,
+    String? publicKey,
     String? privateKey,
     String? privateKeyPassword,
   }) async {
     // 1. 获取远程更新
     await fetch(
       localPath: localPath,
+      publicKey: publicKey,
       privateKey: privateKey,
       privateKeyPassword: privateKeyPassword,
     );
 
-    // 2. 合并远程分支（使用 dart_git）
+    // 2. 合并远程分支
     try {
-      final repo = dart_git.GitRepository.load(localPath);
-      final author = dart_git.GitAuthor(name: authorName, email: authorEmail);
-      repo.mergeTrackingBranch(author: author);
-      repo.close();
+      final repo = git2.Repository.open(localPath);
+      final remote = git2.Remote.lookup(repo: repo, name: 'origin');
+
+      // 获取远程 HEAD
+      final remoteHead = git2.Reference.lookup(
+        repo: repo,
+        name: 'refs/remotes/origin/${repo.head.shorthand}',
+      );
+
+      if (remoteHead != null) {
+        final analysis = git2.Merge.analysis(
+          repo: repo,
+          theirHead: git2.AnnotatedCommit.lookup(repo: repo, oid: remoteHead.target),
+        );
+
+        if (analysis.result.contains(git2.GitMergeAnalysis.normal) ||
+            analysis.result.contains(git2.GitMergeAnalysis.upToDate)) {
+          // 执行合并
+          final commit = git2.AnnotatedCommit.lookup(
+            repo: repo,
+            oid: remoteHead.target,
+          );
+          git2.Merge.commit(repo: repo, commit: commit);
+          repo.stateCleanup();
+        }
+      }
+
+      remote.free();
+      repo.free();
     } catch (e) {
       print('合并失败（可能没有远程分支）: $e');
-      // 继续执行，可能本地没有提交需要合并
     }
 
     // 3. 添加所有更改
     try {
-      final repo = dart_git.GitRepository.load(localPath);
-      repo.add('.');
-      repo.close();
+      add(localPath, '.');
     } catch (e) {
       print('添加文件失败: $e');
     }
 
     // 4. 检查是否有更改需要提交
     try {
-      final repo = dart_git.GitRepository.load(localPath);
-      final status = repo.status();
-      final hasChanges = status.added.isNotEmpty ||
-          status.modified.isNotEmpty ||
-          status.removed.isNotEmpty;
-      repo.close();
-
-      if (hasChanges) {
+      if (hasChanges(localPath)) {
         // 5. 提交
         commit(
           repoPath: localPath,
@@ -259,6 +287,7 @@ class GitService {
         // 6. 推送
         await push(
           localPath: localPath,
+          publicKey: publicKey,
           privateKey: privateKey,
           privateKeyPassword: privateKeyPassword,
         );
@@ -291,7 +320,12 @@ class GitService {
 
   /// 检查目录是否是 Git 仓库
   bool isGitRepo(String path) {
-    return dart_git.GitRepository.isValidRepo(path);
+    try {
+      git2.Repository.open(path);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }
 

@@ -96,66 +96,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    // 检查 URL 格式
-    if (!_gitService.isSshUrl(repoUrl)) {
-      final sshUrl = _gitService.convertHttpsToSsh(repoUrl);
-      final shouldConvert = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('需要 SSH URL'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('go_git_dart 只支持 SSH 协议，不支持 HTTPS。'),
-              const SizedBox(height: 12),
-              Text('当前 URL:', style: TextStyle(color: Colors.grey[600])),
-              Text(repoUrl, style: const TextStyle(fontFamily: 'monospace')),
-              const SizedBox(height: 12),
-              const Text('转换为 SSH URL:'),
-              Text(sshUrl, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('使用 SSH URL'),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldConvert != true) {
-        return;
-      }
-
-      // 更新 URL 为 SSH 格式
-      _repoUrlController.text = sshUrl;
-    }
-
-    // 检查是否有 SSH 密钥
-    if (_sshKeyPath == null) {
-      _showStatus('请先生成或导入 SSH 私钥', success: false);
-      return;
-    }
-
     setState(() => _isCloning = true);
 
     try {
       final localPath = await _gitService.getRepoPath();
       final isExistingRepo = _gitService.isGitRepo(localPath);
 
-      // 读取私钥
-      final privateKey = await File(_sshKeyPath!).readAsString();
+      // 读取 SSH 密钥（如果有）
+      String? publicKey;
+      String? privateKey;
+      if (_sshKeyPath != null) {
+        privateKey = await File(_sshKeyPath!).readAsString();
+        publicKey = _sshPublicKey;
+      }
 
       if (isExistingRepo) {
         // 已存在，执行 fetch
         await _gitService.fetch(
           localPath: localPath,
+          publicKey: publicKey,
           privateKey: privateKey,
           privateKeyPassword: _sshKeyPassword,
         );
@@ -163,18 +122,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } else {
         // 克隆新仓库
         await _gitService.clone(
-          url: _repoUrlController.text.trim(),
+          url: repoUrl,
           localPath: localPath,
+          publicKey: publicKey,
           privateKey: privateKey,
           privateKeyPassword: _sshKeyPassword,
         );
         await _gitService.setRepoPath(localPath);
         _showStatus('仓库克隆成功', success: true);
       }
-    } on GitSshRequiredException catch (e) {
-      _showStatus(e.toString(), success: false);
-    } on GitAuthException catch (e) {
-      _showStatus(e.toString(), success: false);
     } catch (e) {
       _showStatus('操作失败: $e', success: false);
     } finally {
@@ -195,10 +151,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
 
-      // 读取私钥
+      // 读取 SSH 密钥（如果有）
+      String? publicKey;
       String? privateKey;
       if (_sshKeyPath != null) {
         privateKey = await File(_sshKeyPath!).readAsString();
+        publicKey = _sshPublicKey;
       }
 
       await _gitService.sync(
@@ -209,6 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         authorEmail: _emailController.text.isNotEmpty 
             ? _emailController.text 
             : 'user@example.com',
+        publicKey: publicKey,
         privateKey: privateKey,
         privateKeyPassword: _sshKeyPassword,
       );
@@ -226,7 +185,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       setState(() => _isLoading = true);
       
-      final keys = await _gitService.generateRsaKeys();
+      // 使用 pointycastle 生成 RSA 密钥对
+      final keyPair = await _generateRsaKeyPair();
       
       // 保存到应用目录
       final appDir = await getApplicationDocumentsDirectory();
@@ -236,15 +196,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       final privateKeyPath = p.join(sshDir.path, 'id_rsa');
-      await File(privateKeyPath).writeAsString(keys['privateKey']!);
+      await File(privateKeyPath).writeAsString(keyPair['privateKey']!);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('git_ssh_key_path', privateKeyPath);
-      await prefs.setString('git_ssh_public_key', keys['publicKey']!);
+      await prefs.setString('git_ssh_public_key', keyPair['publicKey']!);
 
       setState(() {
         _sshKeyPath = privateKeyPath;
-        _sshPublicKey = keys['publicKey'];
+        _sshPublicKey = keyPair['publicKey'];
         _isLoading = false;
       });
 
@@ -268,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     border: Border.all(color: Colors.grey.shade300),
                   ),
                   child: SelectableText(
-                    keys['publicKey']!.trim(),
+                    keyPair['publicKey']!.trim(),
                     style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12,
@@ -280,7 +240,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             actions: [
               TextButton.icon(
                 onPressed: () {
-                  Clipboard.setData(ClipboardData(text: keys['publicKey']!.trim()));
+                  Clipboard.setData(ClipboardData(text: keyPair['publicKey']!.trim()));
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('公钥已复制')),
@@ -297,6 +257,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _isLoading = false);
       _showStatus('生成密钥失败: $e', success: false);
     }
+  }
+
+  /// 使用 pointycastle 生成 RSA 密钥对
+  Future<Map<String, String>> _generateRsaKeyPair() async {
+    // 使用系统 ssh-keygen 命令生成（如果可用）
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final sshDir = Directory(p.join(appDir.path, '.ssh'));
+      if (!await sshDir.exists()) {
+        await sshDir.create(recursive: true);
+      }
+      final privateKeyPath = p.join(sshDir.path, 'id_rsa');
+      final publicKeyPath = p.join(sshDir.path, 'id_rsa.pub');
+
+      // 删除已有密钥
+      if (await File(privateKeyPath).exists()) {
+        await File(privateKeyPath).delete();
+      }
+      if (await File(publicKeyPath).exists()) {
+        await File(publicKeyPath).delete();
+      }
+
+      final result = await Process.run('ssh-keygen', [
+        '-t', 'rsa',
+        '-b', '4096',
+        '-f', privateKeyPath,
+        '-N', '',
+        '-C', 'obsidian-git',
+      ]);
+
+      if (result.exitCode == 0) {
+        final privateKey = await File(privateKeyPath).readAsString();
+        final publicKey = await File(publicKeyPath).readAsString();
+        return {'privateKey': privateKey, 'publicKey': publicKey};
+      }
+    } catch (e) {
+      print('ssh-keygen 不可用: $e');
+    }
+
+    // 回退：使用 Dart 纯代码生成
+    throw Exception('无法生成 SSH 密钥对。请在电脑上使用 ssh-keygen 生成后导入。');
   }
 
   /// 导入 SSH 私钥

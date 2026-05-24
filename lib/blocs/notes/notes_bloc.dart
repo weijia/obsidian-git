@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -310,11 +311,26 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
 
       final authorName = prefs.getString('git_username') ?? 'Obsidian Git User';
       final authorEmail = prefs.getString('git_email') ?? 'user@example.com';
+      final publicKey = prefs.getString('git_ssh_public_key');
+
+      // 读取私钥
+      final sshKeyPath = prefs.getString('git_ssh_key_path');
+      String? privateKey;
+      if (sshKeyPath != null) {
+        final file = File(sshKeyPath);
+        if (await file.exists()) {
+          privateKey = await file.readAsString();
+        }
+      }
+      final privateKeyPassword = prefs.getString('git_ssh_key_password');
 
       final result = await _gitService.sync(
         localPath: localPath,
         authorName: authorName,
         authorEmail: authorEmail,
+        publicKey: publicKey,
+        privateKey: privateKey,
+        privateKeyPassword: privateKeyPassword,
       );
 
       if (result.success) {

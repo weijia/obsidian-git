@@ -69,8 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: actions/setup-java@v4
         with:
@@ -81,11 +79,6 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26b
 
       - name: Get dependencies
         run: flutter pub get
@@ -122,18 +115,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-
-      - name: Install Go (for go_git_dart FFI)
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -157,18 +143,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-
-      - name: Install Go (for go_git_dart FFI)
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -197,23 +176,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libssl-dev libpcre3
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-
-      - name: Install Go (for go_git_dart FFI)
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -244,18 +216,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
-
-      - name: Install Go (for go_git_dart FFI)
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
 
       - name: Get dependencies
         run: flutter pub get
@@ -301,7 +266,7 @@ jobs:
           echo "  Build Type:    ${{ needs.generate-version.outputs.build_type }}"
           echo "  Tag:           ${{ needs.generate-version.outputs.build_tag || 'None (auto-generated)' }}"
           echo "  DateTime:      ${{ needs.generate-version.outputs.build_datetime || 'N/A' }}"
-          echo "  Timezone:      ${{ needs.generate-version.outputs.build_timezone || 'UTC+8' }}"
+          echo "  Timezone:      ${{ needs.generate-version.outputs.build_timezone || 'N/A' }}"
           echo "  Commit:        ${{ github.sha }}"
           echo "  Branch:        ${{ github.ref_name }}"
           echo "========================================"

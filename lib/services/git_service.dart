@@ -211,7 +211,10 @@ class GitService {
     final repo = git2.Repository.open(repoPath);
     final index = repo.index;
     if (filePattern == '.') {
-      index.addAll(repo.status.keys.toList());
+      // 遍历添加所有变更的文件
+      for (final file in repo.status.keys) {
+        index.add(file);
+      }
     } else {
       index.add(filePattern);
     }

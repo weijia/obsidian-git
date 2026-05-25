@@ -23,7 +23,7 @@ class GitService {
 
   /// SSH certificate check 原生回调指针
   static late Pointer<NativeFunction<
-      Int32 Function(Pointer<Void>, Int32, Pointer<Void>, Pointer<Void>)>>
+      Int32 Function(Pointer<git_cert>, Int32, Pointer<Char>, Pointer<Void>)>>
       _certCheckFnPtr;
 
   /// 初始化 Git 服务（Android 上需要调用 androidInitialize）
@@ -57,15 +57,15 @@ class GitService {
   /// 返回 0 表示信任所有主机密钥。
   static void _initializeCertCheckCallback() {
     _certCheckFnPtr = Pointer.fromFunction<
-        Int32 Function(Pointer<Void>, Int32, Pointer<Void>,
+        Int32 Function(Pointer<git_cert>, Int32, Pointer<Char>,
             Pointer<Void>)>(_certCheckCallback, 0);
   }
 
   /// Certificate check 回调实现
   static int _certCheckCallback(
-    Pointer<Void> cert,
+    Pointer<git_cert> cert,
     int valid,
-    Pointer<Void> host,
+    Pointer<Char> host,
     Pointer<Void> payload,
   ) {
     final hostStr = host.cast<Utf8>().toDartString();

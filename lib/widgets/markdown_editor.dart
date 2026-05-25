@@ -454,7 +454,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   // ============== 表格 ==============
 
+  /// 保存的选区，用于在对话框关闭后恢复插入位置
+  Selection? _savedSelection;
+
   void _showInsertTableDialog() {
+    // 在弹出对话框前保存当前选区，因为对话框会导致编辑器失去焦点
+    _savedSelection = _editorState.selection;
     int rows = 3;
     int cols = 3;
 
@@ -601,8 +606,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       final tableNode = _createTableNode(rows: rows, cols: cols);
       final transaction = _editorState.transaction;
 
-      // 获取当前选区所在的最外层节点路径
-      final selection = _editorState.selection;
+      // 使用保存的选区（对话框关闭后编辑器选区会丢失）
+      final selection = _savedSelection ?? _editorState.selection;
       Path insertPath;
 
       if (selection != null && selection.end.path.isNotEmpty) {

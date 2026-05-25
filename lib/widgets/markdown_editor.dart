@@ -149,7 +149,13 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           ),
         ),
       ),
-      blockComponentBuilders: standardBlockComponentBuilderMap,
+      blockComponentBuilders: {
+        ...standardBlockComponentBuilderMap,
+        // 为表格添加行/列操作菜单
+        TableBlockKeys.type: TableBlockComponentBuilder(
+          menuBuilder: _buildTableMenu,
+        ),
+      },
     );
   }
 
@@ -453,6 +459,98 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   }
 
   // ============== 表格 ==============
+
+  /// 表格操作菜单构建器
+  ///
+  /// 点击表格行/列头时显示操作菜单，支持：
+  /// - 添加/删除/复制行
+  /// - 添加/删除/复制列
+  /// - 清空单元格内容
+  Widget _buildTableMenu(
+    Node node,
+    EditorState editorState,
+    int index,
+    TableDirection direction,
+    VoidCallback? onShow,
+    VoidCallback? onHide,
+  ) {
+    final isRow = direction == TableDirection.row;
+    final label = isRow ? '行' : '列';
+    final total = isRow
+        ? (node.attributes[TableBlockKeys.rowsLen] as int? ?? 0)
+        : (node.attributes[TableBlockKeys.colsLen] as int? ?? 0);
+
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        switch (value) {
+          case 'add':
+            TableActions.add(node, index, editorState, direction);
+          case 'delete':
+            if (total > (isRow ? 1 : 1)) {
+              TableActions.delete(node, index, editorState, direction);
+            }
+          case 'duplicate':
+            TableActions.duplicate(node, index, editorState, direction);
+          case 'clear':
+            TableActions.clear(node, index, editorState, direction);
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'add',
+          child: Row(
+            children: [
+              const Icon(Icons.add, size: 18),
+              const SizedBox(width: 8),
+              Text('在下方插入${label}', style: const TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'duplicate',
+          child: Row(
+            children: [
+              const Icon(Icons.content_copy, size: 18),
+              const SizedBox(width: 8),
+              Text('复制此${label}', style: const TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+        if (total > 1)
+          PopupMenuItem(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, size: 18, color: Theme.of(context).colorScheme.error),
+                const SizedBox(width: 8),
+                Text(
+                  '删除此${label}',
+                  style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ),
+          ),
+        PopupMenuItem(
+          value: 'clear',
+          child: Row(
+            children: [
+              const Icon(Icons.clear_all, size: 18),
+              const SizedBox(width: 8),
+              Text('清空此${label}内容', style: const TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          Icons.more_horiz,
+          size: 18,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
 
   /// 保存的选区，用于在对话框关闭后恢复插入位置
   Selection? _savedSelection;

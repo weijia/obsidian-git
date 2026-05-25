@@ -190,6 +190,28 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Fix libgit2 symlink for git2dart
+        run: |
+          # 查找 git2dart_binaries 包中的 libgit2.so 文件
+          PUB_CACHE="${HOME}/.pub-cache"
+          GIT2DART_BINARIES=$(find "$PUB_CACHE" -type d -name "git2dart_binaries*" | head -1)
+          if [ -n "$GIT2DART_BINARIES" ]; then
+            echo "Found git2dart_binaries at: $GIT2DART_BINARIES"
+            ls -la "$GIT2DART_BINARIES/linux/" || true
+            # 查找实际的 .so 文件
+            ACTUAL_SO=$(find "$GIT2DART_BINARIES/linux" -name "libgit2*.so" | head -1)
+            if [ -n "$ACTUAL_SO" ]; then
+              echo "Found actual .so: $ACTUAL_SO"
+              # 创建 CMake 期望的符号链接
+              ln -sf "$ACTUAL_SO" "$GIT2DART_BINARIES/linux/libgit2-1.6.2.so"
+              echo "Created symlink"
+            else
+              echo "No .so file found, checking pub.dev package..."
+              # 检查包是否正确下载
+              cat "$GIT2DART_BINARIES/pubspec.yaml" || true
+            fi
+          fi
+
       - name: Build Linux
         run: |
           flutter build linux --release \
@@ -224,6 +246,27 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Fix libgit2 for git2dart on Windows
+        shell: bash
+        run: |
+          # 查找 git2dart_binaries 包中的 libgit2.dll 文件
+          PUB_CACHE="${LOCALAPPDATA}\\Pub\\Cache"
+          if [ ! -d "$PUB_CACHE" ]; then
+            PUB_CACHE="${USERPROFILE}\\.pub-cache"
+          fi
+          GIT2DART_BINARIES=$(find "$PUB_CACHE" -type d -name "git2dart_binaries*" 2>/dev/null | head -1)
+          if [ -n "$GIT2DART_BINARIES" ]; then
+            echo "Found git2dart_binaries at: $GIT2DART_BINARIES"
+            ls -la "$GIT2DART_BINARIES/windows/" || true
+            # 查找实际的 .dll 文件
+            ACTUAL_DLL=$(find "$GIT2DART_BINARIES/windows" -name "git2*.dll" 2>/dev/null | head -1)
+            if [ -n "$ACTUAL_DLL" ]; then
+              echo "Found actual .dll: $ACTUAL_DLL"
+              # 创建 CMake 期望的文件名
+              cp "$ACTUAL_DLL" "$GIT2DART_BINARIES/windows/git2.dll" 2>/dev/null || true
+            fi
+          fi
 
       - name: Build Windows
         shell: bash

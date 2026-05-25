@@ -7,7 +7,7 @@ import '../models/git_config.dart';
 
 /// Git 服务 - 使用 git2dart (libgit2 FFI)
 /// 支持 SSH 和 HTTPS 协议
-/// 
+///
 /// 重要提示：
 /// - Android 上推荐使用 HTTPS + Personal Access Token
 /// - SSH 在 Android 上需要复杂的 known_hosts 配置
@@ -44,7 +44,7 @@ class GitService {
   }
 
   /// 构建认证回调
-  /// 
+  ///
   /// 根据认证方式返回相应的 Credentials
   git2.Callbacks _buildCallbacks(GitConfig config) {
     // HTTPS 认证 - 使用 Personal Access Token
@@ -77,7 +77,7 @@ class GitService {
   }
 
   /// 转换 SSH URL 为 HTTPS URL
-  /// 
+  ///
   /// 例如：git@gitee.com:user/repo.git -> https://gitee.com/user/repo.git
   String _convertSshToHttps(String url) {
     // SCP 风格 SSH URL: git@hostname:path
@@ -87,23 +87,23 @@ class GitService {
       final path = scpMatch.group(2)!;
       return 'https://$host/$path';
     }
-    
+
     // 已经是 HTTPS 或 HTTP URL
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }
-    
+
     // ssh:// 协议
     if (url.startsWith('ssh://')) {
       final uri = Uri.parse(url);
       return 'https://${uri.host}${uri.path}';
     }
-    
+
     return url;
   }
 
   /// 获取处理后的 URL
-  /// 
+  ///
   /// 如果使用 HTTPS 认证，自动将 SSH URL 转换为 HTTPS URL
   String _getProcessedUrl(GitConfig config) {
     if (config.useHTTPS) {
@@ -149,10 +149,11 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     final repo = git2.Repository.open(localPath);
-    
+
     // 如果需要，更新远程 URL
     final url = _getProcessedUrl(config);
-    final currentUrl = repo.config.getString('remote.$remoteName.url');
+    final configEntry = repo.config['remote.$remoteName.url'];
+    final currentUrl = configEntry.value;
     if (currentUrl != url) {
       print('更新远程 URL: $currentUrl -> $url');
       git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
@@ -184,10 +185,11 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     final repo = git2.Repository.open(localPath);
-    
+
     // 如果需要，更新远程 URL
     final url = _getProcessedUrl(config);
-    final currentUrl = repo.config.getString('remote.$remoteName.url');
+    final configEntry = repo.config['remote.$remoteName.url'];
+    final currentUrl = configEntry.value;
     if (currentUrl != url) {
       print('更新远程 URL: $currentUrl -> $url');
       git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
@@ -240,13 +242,6 @@ class GitService {
   }) {
     final repo = git2.Repository.open(repoPath);
 
-    // 创建签名
-    final signature = git2.Signature.create(
-      name: authorName,
-      email: authorEmail,
-      time: DateTime.now(),
-    );
-
     // 获取索引并写入树
     final index = repo.index;
     index.write();
@@ -260,11 +255,20 @@ class GitService {
       parents.add(headCommit);
     }
 
-    // 创建提交
-    final commitOid = repo.createCommit(
-      ref: 'HEAD',
-      author: signature,
-      committer: signature,
+    // 使用 Commit.create 静态方法创建提交
+    git2.Commit.create(
+      repo: repo,
+      updateRef: 'HEAD',
+      author: git2.Signature.create(
+        name: authorName,
+        email: authorEmail,
+        time: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      ),
+      committer: git2.Signature.create(
+        name: authorName,
+        email: authorEmail,
+        time: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      ),
       message: message,
       tree: tree,
       parents: parents,
@@ -312,20 +316,20 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     final repo = git2.Repository.open(localPath);
-    
+
     // 获取远程更新
     await fetch(config: config, localPath: localPath, remoteName: remoteName);
 
     // 合并远程分支到 HEAD
     if (!repo.isEmpty) {
       final remoteRef = 'refs/remotes/$remoteName/${config.branch}';
-      
+
       // 使用 RevParse 将引用名解析为 Commit
       final revParse = git2.RevParse.single(
-        repo: repo, 
+        repo: repo,
         spec: remoteRef,
       );
-      
+
       if (revParse is git2.Commit) {
         // 使用 AnnotatedCommit 进行合并
         final annotatedCommit = git2.AnnotatedCommit.lookup(repo: repo, oid: revParse.oid);
@@ -345,7 +349,7 @@ class GitService {
   static SyncResult failure(String error) => SyncResult(success: false, error: error);
 
   /// 同步仓库（添加、提交、拉取、推送）
-  /// 
+  ///
   /// 这是旧版 API 的兼容方法，建议使用新的独立方法
   Future<SyncResult> sync({
     required String localPath,

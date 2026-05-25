@@ -155,9 +155,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           config: config,
           localPath: localPath,
         );
-        await _gitService.setRepoPath(localPath);
         _showStatus('仓库克隆成功', success: true);
       }
+
+      // 关键：将实际本地路径保存到设置中，否则 App 重启后找不到仓库
+      final savedConfig = _buildConfig();
+      final configWithLocalPath = GitConfig(
+        repoUrl: savedConfig.repoUrl,
+        branch: savedConfig.branch,
+        localPath: localPath,
+        username: savedConfig.username,
+        email: savedConfig.email,
+        sshKeyPath: savedConfig.sshKeyPath,
+        sshPublicKey: savedConfig.sshPublicKey,
+        sshPrivateKey: savedConfig.sshPrivateKey,
+        sshKeyPassword: savedConfig.sshKeyPassword,
+        httpsToken: savedConfig.httpsToken,
+        authMethod: savedConfig.authMethod,
+        syncFrequency: savedConfig.syncFrequency,
+        autoSync: savedConfig.autoSync,
+      );
+      await _settingsService.setGitConfig(configWithLocalPath);
     } catch (e) {
       _showStatus('操作失败: $e', success: false);
     } finally {

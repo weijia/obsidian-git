@@ -143,7 +143,7 @@ class Sidebar extends StatelessWidget {
                   )
                 : null,
             selected: isSelected,
-            selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+            selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
             onTap: () => onFolderSelected(folder),
           );
         },
@@ -220,7 +220,7 @@ class Sidebar extends StatelessWidget {
                 )
               : null,
           selected: isSelected,
-          selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+          selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
           onTap: () => onNoteSelected(note),
           trailing: PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 18),

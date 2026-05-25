@@ -560,18 +560,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   }
 
   Node _createTableNode({required int rows, required int cols}) {
-    final tableNode = Node(
-      type: TableBlockKeys.type,
-      attributes: {
-        TableBlockKeys.colsLen: cols,
-        TableBlockKeys.rowsLen: rows,
-        TableBlockKeys.colDefaultWidth: 120.0,
-        TableBlockKeys.rowDefaultHeight: 40.0,
-        TableBlockKeys.colMinimumWidth: 40.0,
-        TableBlockKeys.borderWidth: 1.0,
-      },
-    );
-
+    // 先创建所有单元格子节点
+    final List<Node> cells = [];
     for (var col = 0; col < cols; col++) {
       for (var row = 0; row < rows; row++) {
         final content = row == 0 ? '标题 ${col + 1}' : '';
@@ -587,11 +577,23 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             paragraphNode(text: content),
           ],
         );
-        tableNode.insert(cell);
+        cells.add(cell);
       }
     }
 
-    return tableNode;
+    // 创建表格节点，通过 children 参数传入单元格
+    return Node(
+      type: TableBlockKeys.type,
+      attributes: {
+        TableBlockKeys.colsLen: cols,
+        TableBlockKeys.rowsLen: rows,
+        TableBlockKeys.colDefaultWidth: 120.0,
+        TableBlockKeys.rowDefaultHeight: 40.0,
+        TableBlockKeys.colMinimumWidth: 40.0,
+        TableBlockKeys.borderWidth: 1.0,
+      },
+      children: cells,
+    );
   }
 
   void _insertTable({required int rows, required int cols}) {

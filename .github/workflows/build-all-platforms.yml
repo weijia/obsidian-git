@@ -239,6 +239,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install OpenSSL
+        shell: pwsh
+        run: choco install openssl -y
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -259,12 +263,19 @@ jobs:
           if [ -n "$GIT2DART_BINARIES" ]; then
             echo "Found git2dart_binaries at: $GIT2DART_BINARIES"
             ls -la "$GIT2DART_BINARIES/windows/" || true
-            # 查找实际的 .dll 文件
-            ACTUAL_DLL=$(find "$GIT2DART_BINARIES/windows" -name "git2*.dll" 2>/dev/null | head -1)
+            # 查找实际的 .dll 文件 (libgit2.dll 或 git2.dll)
+            ACTUAL_DLL=$(find "$GIT2DART_BINARIES/windows" -name "libgit2.dll" 2>/dev/null | head -1)
             if [ -n "$ACTUAL_DLL" ]; then
               echo "Found actual .dll: $ACTUAL_DLL"
-              # 创建 CMake 期望的文件名
-              cp "$ACTUAL_DLL" "$GIT2DART_BINARIES/windows/git2.dll" 2>/dev/null || true
+              # 创建 CMake 期望的文件名 (libgit2-1.6.2.dll)
+              cp "$ACTUAL_DLL" "$GIT2DART_BINARIES/windows/libgit2-1.6.2.dll"
+              echo "Created libgit2-1.6.2.dll"
+            fi
+            # 同样检查 libcrypto
+            CRYPTO_DLL=$(find "$GIT2DART_BINARIES/windows" -name "libcrypto*.dll" 2>/dev/null | head -1)
+            if [ -n "$CRYPTO_DLL" ] && [ ! -f "$GIT2DART_BINARIES/windows/libcrypto-1_1-x64.dll" ]; then
+              cp "$CRYPTO_DLL" "$GIT2DART_BINARIES/windows/libcrypto-1_1-x64.dll"
+              echo "Created libcrypto-1_1-x64.dll"
             fi
           fi
 

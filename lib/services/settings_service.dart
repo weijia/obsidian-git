@@ -74,6 +74,12 @@ class SettingsService {
       sshKeyPath: json['sshKeyPath'],
       sshPublicKey: json['sshPublicKey'],
       sshPrivateKey: json['sshPrivateKey'],
+      sshKeyPassword: json['sshKeyPassword'],
+      httpsToken: json['httpsToken'],
+      authMethod: AuthMethod.values.firstWhere(
+        (e) => e.name == json['authMethod'],
+        orElse: () => AuthMethod.https,
+      ),
       syncFrequency: SyncFrequency.values.firstWhere(
         (e) => e.name == json['syncFrequency'],
         orElse: () => SyncFrequency.manual,
@@ -100,6 +106,9 @@ class SettingsService {
       'sshKeyPath': config.sshKeyPath,
       'sshPublicKey': config.sshPublicKey,
       'sshPrivateKey': config.sshPrivateKey,
+      'sshKeyPassword': config.sshKeyPassword,
+      'httpsToken': config.httpsToken,
+      'authMethod': config.authMethod.name,
       'syncFrequency': config.syncFrequency.name,
       'autoSync': config.autoSync,
       'lastSyncTime': config.lastSyncTime?.toIso8601String(),

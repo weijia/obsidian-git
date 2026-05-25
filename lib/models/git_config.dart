@@ -10,6 +10,9 @@ class GitConfig extends Equatable {
   final String? sshKeyPath;
   final String? sshPublicKey;
   final String? sshPrivateKey;
+  final String? sshKeyPassword;
+  final String? httpsToken; // HTTPS Personal Access Token
+  final AuthMethod authMethod;
   final SyncFrequency syncFrequency;
   final bool autoSync;
   final DateTime? lastSyncTime;
@@ -24,6 +27,9 @@ class GitConfig extends Equatable {
     this.sshKeyPath,
     this.sshPublicKey,
     this.sshPrivateKey,
+    this.sshKeyPassword,
+    this.httpsToken,
+    this.authMethod = AuthMethod.https, // 默认使用 HTTPS
     this.syncFrequency = SyncFrequency.manual,
     this.autoSync = false,
     this.lastSyncTime,
@@ -31,10 +37,16 @@ class GitConfig extends Equatable {
   });
 
   /// 是否使用 SSH
-  bool get useSSH => sshPrivateKey != null && sshPrivateKey!.isNotEmpty;
+  bool get useSSH => authMethod == AuthMethod.ssh;
+
+  /// 是否使用 HTTPS
+  bool get useHTTPS => authMethod == AuthMethod.https;
 
   /// 是否已配置
   bool get isConfigured => repoUrl.isNotEmpty && localPath.isNotEmpty;
+
+  /// 获取认证方式标签
+  String get authMethodLabel => authMethod.label;
 
   GitConfig copyWith({
     String? repoUrl,
@@ -45,6 +57,9 @@ class GitConfig extends Equatable {
     String? sshKeyPath,
     String? sshPublicKey,
     String? sshPrivateKey,
+    String? sshKeyPassword,
+    String? httpsToken,
+    AuthMethod? authMethod,
     SyncFrequency? syncFrequency,
     bool? autoSync,
     DateTime? lastSyncTime,
@@ -59,6 +74,9 @@ class GitConfig extends Equatable {
       sshKeyPath: sshKeyPath ?? this.sshKeyPath,
       sshPublicKey: sshPublicKey ?? this.sshPublicKey,
       sshPrivateKey: sshPrivateKey ?? this.sshPrivateKey,
+      sshKeyPassword: sshKeyPassword ?? this.sshKeyPassword,
+      httpsToken: httpsToken ?? this.httpsToken,
+      authMethod: authMethod ?? this.authMethod,
       syncFrequency: syncFrequency ?? this.syncFrequency,
       autoSync: autoSync ?? this.autoSync,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
@@ -76,11 +94,24 @@ class GitConfig extends Equatable {
         sshKeyPath,
         sshPublicKey,
         sshPrivateKey,
+        sshKeyPassword,
+        httpsToken,
+        authMethod,
         syncFrequency,
         autoSync,
         lastSyncTime,
         lastSyncStatus,
       ];
+}
+
+/// 认证方式
+enum AuthMethod {
+  https('HTTPS (推荐)', '使用 Personal Access Token 认证'),
+  ssh('SSH', '使用 SSH 密钥认证');
+
+  final String label;
+  final String description;
+  const AuthMethod(this.label, this.description);
 }
 
 /// 同步频率

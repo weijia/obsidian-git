@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:git2dart/git2dart.dart' as git2;
+import 'package:git2dart_binaries/git2dart_binaries.dart' as binaries;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../models/git_config.dart';
@@ -26,7 +27,11 @@ class GitService {
       // 这是 git2dart 0.4.0+ 的要求，用于正确处理 HTTPS 证书
       if (Platform.isAndroid) {
         print('正在初始化 Android 平台 SSL...');
-        await git2.PlatformSpecific.androidInitialize();
+        // 先访问 Libgit2 触发初始化
+        print('libgit2 version: ${git2.Libgit2.version}');
+        // 然后初始化 SSL 证书
+        final certPath = await binaries.AndroidSSLHelper.initialize();
+        git2.Libgit2.setSSLCertLocations(file: certPath);
         print('Android SSL 初始化完成');
       }
 
@@ -144,14 +149,16 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     final repo = git2.Repository.open(localPath);
-    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
-
+    
     // 如果需要，更新远程 URL
     final url = _getProcessedUrl(config);
-    if (url != remote.url) {
-      print('更新远程 URL: ${remote.url} -> $url');
+    final currentUrl = repo.config.getString('remote.$remoteName.url');
+    if (currentUrl != url) {
+      print('更新远程 URL: $currentUrl -> $url');
       git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
     }
+
+    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
 
     print('获取远程更新...');
     try {
@@ -177,14 +184,16 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     final repo = git2.Repository.open(localPath);
-    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
-
+    
     // 如果需要，更新远程 URL
     final url = _getProcessedUrl(config);
-    if (url != remote.url) {
-      print('更新远程 URL: ${remote.url} -> $url');
+    final currentUrl = repo.config.getString('remote.$remoteName.url');
+    if (currentUrl != url) {
+      print('更新远程 URL: $currentUrl -> $url');
       git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
     }
+
+    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
 
     print('推送到远程...');
     try {

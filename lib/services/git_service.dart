@@ -22,8 +22,10 @@ class GitService {
   final Map<String, String> _dnsCache = {};
 
   /// SSH certificate check 原生回调指针
+  /// 
+  /// 使用 Int (平台相关) 而不是 Int32，以匹配 git2dart_binaries 的定义
   static late Pointer<NativeFunction<
-      Int32 Function(Pointer<git_cert>, Int32, Pointer<Char>, Pointer<Void>)>>
+      Int Function(Pointer<git_cert>, Int, Pointer<Char>, Pointer<Void>)>>
       _certCheckFnPtr;
 
   /// 初始化 Git 服务（Android 上需要调用 androidInitialize）
@@ -57,7 +59,7 @@ class GitService {
   /// 返回 0 表示信任所有主机密钥。
   static void _initializeCertCheckCallback() {
     _certCheckFnPtr = Pointer.fromFunction<
-        Int32 Function(Pointer<git_cert>, Int32, Pointer<Char>,
+        Int Function(Pointer<git_cert>, Int, Pointer<Char>,
             Pointer<Void>)>(_certCheckCallback, 0);
   }
 

@@ -21,7 +21,7 @@ class GitService {
     try {
       // Android 上初始化 libgit2 SSL 证书
       if (Platform.isAndroid) {
-        git2.PlatformSpecific.androidInitialize();
+        await git2.PlatformSpecific.androidInitialize();
       }
       _isInitialized = true;
     } catch (e) {

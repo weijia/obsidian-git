@@ -34,20 +34,38 @@ class GitService {
     }
   }
 
+  /// 从 URL 中提取主机名（支持 SSH SCP 风格和标准 URL）
+  String? _extractHostname(String url) {
+    // SCP 风格 SSH URL: git@hostname:path
+    // 例如: git@gitee.com:weijia432/obsidian.git
+    final scpMatch = RegExp(r'^git@([^:]+):').firstMatch(url);
+    if (scpMatch != null) {
+      return scpMatch.group(1);
+    }
+
+    // 标准 URL: ssh://host/path 或 https://host/path
+    final uri = Uri.tryParse(url);
+    if (uri != null && uri.host.isNotEmpty) {
+      return uri.host;
+    }
+
+    return null;
+  }
+
   /// 在 Android 上预解析 DNS，将 URL 中的域名替换为 IP
   /// libgit2 在 Android 上静态链接后 getaddrinfo() 不工作，
   /// 需要用 Dart 的系统 DNS 解析器预先解析域名
   Future<String> _resolveUrlForAndroid(String url) async {
     if (!Platform.isAndroid) return url;
 
-    try {
-      final uri = Uri.parse(url);
-      final hostname = uri.host;
+    final hostname = _extractHostname(url);
+    if (hostname == null) return url;
 
+    try {
       // 检查缓存
       if (_dnsCache.containsKey(hostname)) {
         final ip = _dnsCache[hostname]!;
-        return url.replaceFirst(hostname, ip);
+        return _replaceHostname(url, hostname, ip);
       }
 
       // 使用 Dart 的系统 DNS 解析器（在 Android 上正常工作）
@@ -58,15 +76,30 @@ class GitService {
 
       final ip = addresses.first.address;
       _dnsCache[hostname] = ip;
-
-      // 替换 URL 中的域名为 IP
-      final resolvedUrl = url.replaceFirst(hostname, ip);
       print('DNS 预解析: $hostname -> $ip');
-      return resolvedUrl;
+
+      return _replaceHostname(url, hostname, ip);
     } catch (e) {
-      print('DNS 预解析失败: $e，使用原始 URL');
-      return url;
+      print('DNS 预解析失败: $e');
+      // 如果 DNS 预解析失败，返回原始 URL，让 libgit2 自己尝试解析
+      // 这时可能会失败，但至少能给用户一个明确的错误
+      rethrow;
     }
+  }
+
+  /// 替换 URL 中的主机名为 IP
+  String _replaceHostname(String url, String hostname, String ip) {
+    // SSH SCP 风格: git@hostname:path -> git@ip:path
+    if (url.contains('@$hostname:')) {
+      return url.replaceFirst('@$hostname:', '@$ip:');
+    }
+
+    // HTTPS/SSH 标准风格
+    if (url.contains(hostname)) {
+      return url.replaceFirst(hostname, ip);
+    }
+
+    return url;
   }
 
   /// 构建 SSH 认证回调

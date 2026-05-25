@@ -337,17 +337,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _showStatus(String message, {required bool success}) {
+  void _showStatus(String message, {required bool success, bool copyable = true}) {
     setState(() {
       _statusMessage = message;
       _statusSuccess = success;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: success ? null : Theme.of(context).colorScheme.error,
-      ),
-    );
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: null,
+        ),
+      );
+    } else {
+      // 错误信息显示为可复制的对话框
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 8),
+              const Text('操作失败'),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                message,
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                // 复制错误信息到剪贴板
+                Clipboard.setData(ClipboardData(text: message));
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('错误信息已复制')),
+                );
+              },
+              icon: const Icon(Icons.copy),
+              label: const Text('复制'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override

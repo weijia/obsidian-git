@@ -134,9 +134,7 @@ class GitService {
       if (resolvedUrl != url) {
         try {
           final repo = git2.Repository.open(localPath);
-          final remote = git2.Remote.lookup(repo: repo, name: 'origin');
-          remote.setUrl(url);
-          remote.free();
+          git2.Remote.setUrl(repo: repo, remote: 'origin', url: url);
           repo.free();
         } catch (e) {
           print('更新 remote URL 失败: $e');
@@ -168,7 +166,7 @@ class GitService {
 
       // 临时设置 resolved URL 进行 fetch
       if (resolvedUrl != remoteUrl) {
-        remote.setUrl(resolvedUrl);
+        git2.Remote.setUrl(repo: repo, remote: remoteName, url: resolvedUrl);
       }
 
       remote.fetch(
@@ -182,7 +180,7 @@ class GitService {
 
       // 恢复原始 URL
       if (resolvedUrl != remoteUrl) {
-        remote.setUrl(remoteUrl);
+        git2.Remote.setUrl(repo: repo, remote: remoteName, url: remoteUrl);
       }
 
       remote.free();
@@ -213,7 +211,7 @@ class GitService {
 
       // 临时设置 resolved URL 进行 push
       if (resolvedUrl != remoteUrl) {
-        remote.setUrl(resolvedUrl);
+        git2.Remote.setUrl(repo: repo, remote: remoteName, url: resolvedUrl);
       }
 
       remote.push(
@@ -227,7 +225,7 @@ class GitService {
 
       // 恢复原始 URL
       if (resolvedUrl != remoteUrl) {
-        remote.setUrl(remoteUrl);
+        git2.Remote.setUrl(repo: repo, remote: remoteName, url: remoteUrl);
       }
 
       remote.free();

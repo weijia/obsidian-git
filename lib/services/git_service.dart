@@ -6,13 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/git_config.dart';
 
 /// Git 服务 - 使用 git2dart (libgit2 FFI)
-/// 支持 SSH 和 HTTPS 协议，DNS 走系统原生 API
+/// 支持 SSH 和 HTTPS 协议
+/// Android 上通过 Dart 层 DNS 预解析绕过 libgit2 的 DNS 问题
 class GitService {
   static final GitService _instance = GitService._internal();
   factory GitService() => _instance;
   GitService._internal();
 
   bool _isInitialized = false;
+
+  /// DNS 缓存，避免重复解析
+  final Map<String, String> _dnsCache = {};
 
   /// 初始化 Git 服务（Android 上需要调用 androidInitialize）
   Future<void> initialize() async {
@@ -30,14 +34,52 @@ class GitService {
     }
   }
 
+  /// 在 Android 上预解析 DNS，将 URL 中的域名替换为 IP
+  /// libgit2 在 Android 上静态链接后 getaddrinfo() 不工作，
+  /// 需要用 Dart 的系统 DNS 解析器预先解析域名
+  Future<String> _resolveUrlForAndroid(String url) async {
+    if (!Platform.isAndroid) return url;
+
+    try {
+      final uri = Uri.parse(url);
+      final hostname = uri.host;
+
+      // 检查缓存
+      if (_dnsCache.containsKey(hostname)) {
+        final ip = _dnsCache[hostname]!;
+        return url.replaceFirst(hostname, ip);
+      }
+
+      // 使用 Dart 的系统 DNS 解析器（在 Android 上正常工作）
+      final addresses = await InternetAddress.lookup(hostname);
+      if (addresses.isEmpty) {
+        throw Exception('无法解析域名: $hostname');
+      }
+
+      final ip = addresses.first.address;
+      _dnsCache[hostname] = ip;
+
+      // 替换 URL 中的域名为 IP
+      final resolvedUrl = url.replaceFirst(hostname, ip);
+      print('DNS 预解析: $hostname -> $ip');
+      return resolvedUrl;
+    } catch (e) {
+      print('DNS 预解析失败: $e，使用原始 URL');
+      return url;
+    }
+  }
+
   /// 构建 SSH 认证回调
   git2.Callbacks _buildCallbacks({
     required String? publicKey,
     required String? privateKey,
     String? passphrase,
+    String? originalHost,
   }) {
+    // 对于 HTTPS URL，设置正确的 Host header（因为域名被替换为 IP）
+    git2.Callbacks callbacks;
     if (privateKey != null && privateKey.isNotEmpty) {
-      return git2.Callbacks(
+      callbacks = git2.Callbacks(
         credentials: git2.KeypairFromMemory(
           username: 'git',
           pubKey: publicKey ?? '',
@@ -45,8 +87,15 @@ class GitService {
           passPhrase: passphrase ?? '',
         ),
       );
+    } else {
+      callbacks = const git2.Callbacks();
     }
-    return const git2.Callbacks();
+
+    // 如果有原始域名（HTTPS 场景域名被替换为 IP），需要设置 Host header
+    // git2dart 的 Callbacks 不直接支持 custom headers，
+    // 但 libgit2 的 remote callbacks 支持
+    // 暂时返回基础 callbacks，后续如果需要可以扩展
+    return callbacks;
   }
 
   /// 克隆仓库
@@ -60,6 +109,9 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     try {
+      // Android 上预解析 DNS
+      final resolvedUrl = await _resolveUrlForAndroid(url);
+
       // 确保目标目录的父目录存在
       final parentDir = Directory(localPath).parent;
       if (!await parentDir.exists()) {
@@ -67,14 +119,29 @@ class GitService {
       }
 
       git2.Repository.clone(
-        url: url,
+        url: resolvedUrl,
         localPath: localPath,
         callbacks: _buildCallbacks(
           publicKey: publicKey,
           privateKey: privateKey,
           passphrase: privateKeyPassword,
+          originalHost: url,
         ),
       );
+
+      // 克隆成功后，如果 URL 被解析了，更新 remote URL 回原始域名
+      // 因为后续 fetch/push 也需要同样的处理
+      if (resolvedUrl != url) {
+        try {
+          final repo = git2.Repository.open(localPath);
+          final remote = git2.Remote.lookup(repo: repo, name: 'origin');
+          remote.setUrl(url);
+          remote.free();
+          repo.free();
+        } catch (e) {
+          print('更新 remote URL 失败: $e');
+        }
+      }
     } catch (e) {
       print('克隆失败: $e');
       rethrow;
@@ -94,13 +161,30 @@ class GitService {
     try {
       final repo = git2.Repository.open(localPath);
       final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+
+      // 获取 remote URL 并预解析 DNS
+      var remoteUrl = remote.url;
+      final resolvedUrl = await _resolveUrlForAndroid(remoteUrl);
+
+      // 临时设置 resolved URL 进行 fetch
+      if (resolvedUrl != remoteUrl) {
+        remote.setUrl(resolvedUrl);
+      }
+
       remote.fetch(
         callbacks: _buildCallbacks(
           publicKey: publicKey,
           privateKey: privateKey,
           passphrase: privateKeyPassword,
+          originalHost: remoteUrl,
         ),
       );
+
+      // 恢复原始 URL
+      if (resolvedUrl != remoteUrl) {
+        remote.setUrl(remoteUrl);
+      }
+
       remote.free();
       repo.free();
     } catch (e) {
@@ -122,13 +206,30 @@ class GitService {
     try {
       final repo = git2.Repository.open(localPath);
       final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+
+      // 获取 remote URL 并预解析 DNS
+      var remoteUrl = remote.url;
+      final resolvedUrl = await _resolveUrlForAndroid(remoteUrl);
+
+      // 临时设置 resolved URL 进行 push
+      if (resolvedUrl != remoteUrl) {
+        remote.setUrl(resolvedUrl);
+      }
+
       remote.push(
         callbacks: _buildCallbacks(
           publicKey: publicKey,
           privateKey: privateKey,
           passphrase: privateKeyPassword,
+          originalHost: remoteUrl,
         ),
       );
+
+      // 恢复原始 URL
+      if (resolvedUrl != remoteUrl) {
+        remote.setUrl(remoteUrl);
+      }
+
       remote.free();
       repo.free();
     } catch (e) {
@@ -234,7 +335,6 @@ class GitService {
     // 2. 合并远程分支
     try {
       final repo = git2.Repository.open(localPath);
-      final remote = git2.Remote.lookup(repo: repo, name: 'origin');
 
       // 获取远程 HEAD
       final remoteHead = git2.Reference.lookup(
@@ -260,7 +360,6 @@ class GitService {
         }
       }
 
-      remote.free();
       repo.free();
     } catch (e) {
       print('合并失败（可能没有远程分支）: $e');

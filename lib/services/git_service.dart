@@ -247,21 +247,34 @@ class GitService {
       time: DateTime.now(),
     );
 
-    // 获取所有有变更的文件
-    final changedFiles = repo.status.keys.toList();
-    if (changedFiles.isEmpty) {
-      repo.free();
-      return;
+    // 获取索引并写入树
+    final index = repo.index;
+    index.write();
+    final treeOid = index.writeTree();
+    final tree = git2.Tree.lookup(repo: repo, oid: treeOid);
+
+    // 获取父提交
+    final List<git2.Commit> parents = [];
+    if (!repo.isEmpty) {
+      final headCommit = git2.Commit.lookup(repo: repo, oid: repo.head.target);
+      parents.add(headCommit);
     }
 
-    // 使用 createCommitOnHead 扩展方法
-    repo.createCommitOnHead(
-      changedFiles,
-      signature,
-      signature,
-      message,
+    // 创建提交
+    final commitOid = repo.createCommit(
+      ref: 'HEAD',
+      author: signature,
+      committer: signature,
+      message: message,
+      tree: tree,
+      parents: parents,
     );
 
+    // 释放资源
+    tree.free();
+    for (final parent in parents) {
+      parent.free();
+    }
     repo.free();
   }
 

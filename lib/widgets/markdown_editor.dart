@@ -118,7 +118,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       editorStyle: EditorStyle.desktop(
         padding: const EdgeInsets.all(16),
         cursorColor: colorScheme.primary,
-        selectionColor: colorScheme.primaryContainer.withOpacity(0.4),
+        selectionColor: colorScheme.primaryContainer.withAlpha(102),
         textStyleConfiguration: TextStyleConfiguration(
           text: TextStyle(
             color: colorScheme.onSurface,
@@ -143,7 +143,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           ),
           code: TextStyle(
             color: colorScheme.primary,
-            backgroundColor: colorScheme.primaryContainer.withOpacity(0.3),
+            backgroundColor: colorScheme.primaryContainer.withAlpha(77),
             fontFamily: 'monospace',
             fontSize: 14,
           ),
@@ -218,7 +218,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         color: colorScheme.surfaceContainerLow,
         border: Border(
           bottom: BorderSide(
-            color: colorScheme.outlineVariant.withOpacity(0.5),
+            color: colorScheme.outlineVariant.withAlpha(128),
           ),
         ),
       ),
@@ -332,7 +332,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     return Container(
       height: 20,
       width: 1,
-      color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
+      color: Theme.of(context).colorScheme.outlineVariant.withAlpha(128),
     );
   }
 

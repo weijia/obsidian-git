@@ -596,23 +596,28 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   void _insertTable({required int rows, required int cols}) {
     try {
-      final selection = _editorState.selection;
-      final transaction = _editorState.transaction;
       final tableNode = _createTableNode(rows: rows, cols: cols);
+      final transaction = _editorState.transaction;
 
-      if (selection != null) {
-        final node = _editorState.getNodeAtPath(selection.end.path);
-        if (node != null) {
-          transaction.insertNode(selection.end.path.next, tableNode);
+      // 获取当前选区所在的最外层节点路径
+      final selection = _editorState.selection;
+      Path insertPath;
+
+      if (selection != null && selection.end.path.isNotEmpty) {
+        // 找到选区所在的顶层块节点，在其后插入表格
+        final topPath = [selection.end.path.first];
+        final topNode = _editorState.getNodeAtPath(topPath);
+        if (topNode != null) {
+          insertPath = topNode.path.next;
         } else {
-          _insertTableAtEnd(tableNode);
-          return;
+          insertPath = [_editorState.document.root.children.length];
         }
       } else {
-        _insertTableAtEnd(tableNode);
-        return;
+        // 没有选区，插入到文档末尾
+        insertPath = [_editorState.document.root.children.length];
       }
 
+      transaction.insertNode(insertPath, tableNode);
       _editorState.apply(transaction);
 
       if (mounted) {
@@ -624,42 +629,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('插入表格失败: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _insertTableAtEnd(Node tableNode) {
-    try {
-      final transaction = _editorState.transaction;
-      final document = _editorState.document;
-
-      final lastNode = document.root.children.lastOrNull;
-      Path insertPath;
-      if (lastNode != null) {
-        insertPath = lastNode.path.next;
-      } else {
-        insertPath = [0];
-      }
-
-      transaction.insertNode(insertPath, tableNode);
-      _editorState.apply(transaction);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('表格已插入'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
+      debugPrint('插入表格失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

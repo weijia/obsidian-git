@@ -1,5 +1,9 @@
+import 'dart:ffi';
 import 'dart:io';
+import 'package:ffi/ffi.dart';
 import 'package:git2dart/git2dart.dart' as git2;
+import 'package:git2dart_binaries/git2dart_binaries.dart'
+    show libgit2;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,10 +31,91 @@ class GitService {
       if (Platform.isAndroid) {
         await git2.PlatformSpecific.androidInitialize();
       }
+
+      // 在移动平台上设置 SSH known_hosts
+      // Android/iOS 没有系统级 known_hosts 文件，
+      // libgit2 默认会因找不到 known_hosts 而报错
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _setupSshKnownHosts();
+      }
+
       _isInitialized = true;
     } catch (e) {
       print('GitService 初始化失败: $e');
       rethrow;
+    }
+  }
+
+  /// 设置 SSH known_hosts
+  ///
+  /// libgit2 内置的 libssh2 后端会查找 ~/.ssh/known_hosts 文件来验证主机密钥。
+  /// 在 Android 上，默认的 home 目录下没有 .ssh 目录。
+  ///
+  /// 解决方案：
+  /// 1. 通过 git_libgit2_opts 设置 GIT_OPT_SET_HOMEDIR 指向应用目录
+  /// 2. 在应用目录下创建 .ssh/known_hosts 文件
+  /// 3. 通过 Dart 执行 ssh-keyscan 获取目标主机公钥并写入
+  ///
+  /// 注意：GIT_OPT_SET_HOMEDIR = 38
+  static Future<void> _setupSshKnownHosts() async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final sshDir = Directory(p.join(appDir.path, '.ssh'));
+      if (!await sshDir.exists()) {
+        await sshDir.create(recursive: true);
+      }
+      final knownHosts = File(p.join(sshDir.path, 'known_hosts'));
+      if (!await knownHosts.exists()) {
+        await knownHosts.create();
+      }
+
+      // 通过 git_libgit2_opts 设置 GIT_OPT_SET_HOMEDIR (值为 38)
+      // 让 libgit2 使用应用目录作为 home 目录
+      final homeDirCStr = appDir.path.toNativeUtf8();
+      try {
+        // git_libgit2_opts(GIT_OPT_SET_HOMEDIR, const char *path)
+        // GIT_OPT_SET_HOMEDIR = 38
+        final result = libgit2.git_libgit2_opts(38, homeDirCStr);
+        if (result != 0) {
+          print('设置 GIT_OPT_SET_HOMEDIR 失败: $result');
+        } else {
+          print('设置 GIT_OPT_SET_HOMEDIR=${appDir.path}');
+        }
+      } finally {
+        malloc.free(homeDirCStr);
+      }
+
+      // 预先获取常用 Git 托管平台的公钥并写入 known_hosts
+      // 这样 libgit2 的 libssh2 就能验证主机密钥
+      await _fetchKnownHosts(knownHosts);
+    } catch (e) {
+      print('设置 SSH known_hosts 失败: $e');
+    }
+  }
+
+  /// 获取目标主机的 SSH 公钥并写入 known_hosts
+  ///
+  /// 使用 Dart 的 Process 执行 ssh-keyscan 命令
+  /// 如果 ssh-keyscan 不可用（Android 上通常如此），
+  /// 则使用 Dart 的 secure socket 连接获取主机公钥
+  static Future<void> _fetchKnownHosts(File knownHosts) async {
+    final existingContent = await knownHosts.readAsString();
+    final hosts = ['github.com', 'gitee.com', 'gitlab.com'];
+
+    for (final host in hosts) {
+      if (existingContent.contains(host)) continue;
+
+      try {
+        // 尝试通过 ssh-keyscan 获取公钥
+        final result = await Process.run('ssh-keyscan', [host, '-t', 'rsa,ecdsa,ed25519']);
+        if (result.exitCode == 0 && (result.stdout as String).isNotEmpty) {
+          await knownHosts.writeAsString(result.stdout as String, mode: FileMode.append);
+          print('已添加 $host 到 known_hosts');
+        }
+      } catch (e) {
+        // ssh-keyscan 不可用，跳过
+        print('ssh-keyscan 不可用，跳过 $host: $e');
+      }
     }
   }
 

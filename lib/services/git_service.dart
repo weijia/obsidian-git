@@ -396,9 +396,44 @@ class GitService {
   }
 
   /// 获取仓库路径
+  ///
+  /// 各平台使用用户可访问的公共目录：
+  /// - Android: /storage/emulated/0/Documents/ObsidianGit/notes-repo/
+  ///   （用户可通过文件管理器访问）
+  /// - iOS: Documents/ObsidianGit/notes-repo/（通过 Files App / iTunes 访问）
+  /// - macOS: ~/Documents/ObsidianGit/notes-repo/
+  /// - Linux: ~/Documents/ObsidianGit/notes-repo/
+  /// - Windows: C:\Users\<用户>\Documents\ObsidianGit\notes-repo\
   Future<String> getRepoPath() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    return p.join(appDir.path, 'notes-repo');
+    if (Platform.isAndroid) {
+      // Android: 使用外部存储的 Documents 目录，用户可通过文件管理器访问
+      // 需要 AndroidManifest.xml 中 REQUEST_EXTERNAL_STORAGE 权限
+      // Android 10+ 使用 Scoped Storage，Documents 目录天然可访问
+      final appDir = await getExternalStorageDirectory();
+      if (appDir != null) {
+        // getExternalStorageDirectory 返回的是 App 私有外部目录
+        // 改用 /storage/emulated/0/Documents/ObsidianGit 让用户可见
+        final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
+        if (!await publicDir.exists()) {
+          await publicDir.create(recursive: true);
+        }
+        return p.join(publicDir.path, 'notes-repo');
+      }
+      // 降级：使用应用私有目录
+      final fallbackDir = await getApplicationDocumentsDirectory();
+      return p.join(fallbackDir.path, 'notes-repo');
+    } else {
+      // 桌面平台和 iOS：使用 Documents/ObsidianGit/ 目录
+      // macOS/Linux: ~/Documents/ObsidianGit/notes-repo/
+      // Windows: C:\Users\<用户>\Documents\ObsidianGit\notes-repo/
+      // iOS: 沙盒 Documents/ObsidianGit/notes-repo/
+      final appDir = await getApplicationDocumentsDirectory();
+      final obsidianDir = Directory(p.join(appDir.path, 'ObsidianGit'));
+      if (!await obsidianDir.exists()) {
+        await obsidianDir.create(recursive: true);
+      }
+      return p.join(obsidianDir.path, 'notes-repo');
+    }
   }
 
   /// 设置仓库路径（现在只是保存到配置，实际路径由 getRepoPath 决定）

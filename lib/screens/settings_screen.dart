@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../models/git_config.dart';
 import '../services/git_service.dart';
+import '../services/settings_service.dart';
 import '../version.dart';
 
 /// 设置屏幕
@@ -26,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _httpsTokenController = TextEditingController();
 
   final GitService _gitService = GitService();
+  final SettingsService _settingsService = SettingsService();
 
   GitConfig? _config;
   bool _isLoading = true;

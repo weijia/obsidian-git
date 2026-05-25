@@ -241,7 +241,12 @@ jobs:
 
       - name: Install OpenSSL
         shell: pwsh
-        run: choco install openssl -y
+        run: |
+          choco install openssl -y
+          # 查找 OpenSSL 安装位置
+          Write-Host "Searching for OpenSSL DLLs..."
+          Get-ChildItem -Path "C:\" -Filter "libcrypto*.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
+          Get-ChildItem -Path "C:\Program Files" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*crypto*" -or $_.Name -like "*ssl*" } | Select-Object FullName
 
       - uses: subosito/flutter-action@v2
         with:
@@ -270,24 +275,42 @@ jobs:
               Write-Host "Created libgit2-1.6.2.dll"
             }
             
-            # 从 OpenSSL 安装目录复制 libcrypto
-            $openSSLDlls = @(
-              "C:\Program Files\OpenSSL-Win64\bin\libcrypto-1_1-x64.dll",
-              "C:\Program Files\OpenSSL\bin\libcrypto-1_1-x64.dll",
-              "C:\OpenSSL-Win64\bin\libcrypto-1_1-x64.dll"
-            )
+            # 搜索 libcrypto DLL
             $libcryptoTarget = Join-Path $git2dartBinaries.FullName "windows\libcrypto-1_1-x64.dll"
             
-            foreach ($sslPath in $openSSLDlls) {
+            # 可能的 OpenSSL DLL 位置
+            $searchPaths = @(
+              "C:\Program Files\OpenSSL-Win64\bin\libcrypto-1_1-x64.dll",
+              "C:\Program Files\OpenSSL\bin\libcrypto-1_1-x64.dll",
+              "C:\OpenSSL-Win64\bin\libcrypto-1_1-x64.dll",
+              "C:\Program Files\OpenSSL-Win64\bin\libcrypto-3-x64.dll",
+              "C:\Program Files\OpenSSL-Win64\bin\libcrypto.dll"
+            )
+            
+            $found = $false
+            foreach ($sslPath in $searchPaths) {
               if (Test-Path $sslPath) {
                 Copy-Item $sslPath $libcryptoTarget -Force
                 Write-Host "Copied libcrypto from: $sslPath"
+                $found = $true
                 break
               }
             }
             
-            if (-not (Test-Path $libcryptoTarget)) {
-              Write-Host "Warning: libcrypto-1_1-x64.dll not found in OpenSSL directories"
+            # 如果没找到，搜索整个 C 盘
+            if (-not $found) {
+              Write-Host "Searching for libcrypto DLLs..."
+              $libcryptoDlls = Get-ChildItem -Path "C:\Program Files" -Filter "libcrypto*.dll" -Recurse -ErrorAction SilentlyContinue
+              if ($libcryptoDlls) {
+                $firstDll = $libcryptoDlls | Select-Object -First 1
+                Copy-Item $firstDll.FullName $libcryptoTarget -Force
+                Write-Host "Copied libcrypto from: $($firstDll.FullName)"
+                $found = $true
+              }
+            }
+            
+            if (-not $found) {
+              Write-Host "Warning: libcrypto-1_1-x64.dll not found"
             }
           }
 

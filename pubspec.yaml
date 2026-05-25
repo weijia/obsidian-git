@@ -43,6 +43,8 @@ dependencies:
 
   # Git 操作（git2dart / libgit2 FFI）
   git2dart: ^0.4.0
+  git2dart_binaries: ">=1.10.0 <1.11.0"
+  ffi: ^2.1.2
 
 dev_dependencies:
   flutter_test:

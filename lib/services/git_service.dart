@@ -81,9 +81,18 @@ class GitService {
       return _replaceHostname(url, hostname, ip);
     } catch (e) {
       print('DNS 预解析失败: $e');
-      // 如果 DNS 预解析失败，返回原始 URL，让 libgit2 自己尝试解析
-      // 这时可能会失败，但至少能给用户一个明确的错误
-      rethrow;
+      // DNS 解析失败，可能是网络问题或权限问题
+      // 抛出更友好的错误信息
+      throw Exception(
+        'DNS 解析失败: 无法解析域名 "$hostname"\n\n'
+        '可能的原因:\n'
+        '1. 设备未连接网络\n'
+        '2. AndroidManifest.xml 缺少 INTERNET 权限\n'
+        '3. 防火墙或 DNS 设置问题\n\n'
+        '请检查网络连接，并确保 android/app/src/main/AndroidManifest.xml 中包含:\n'
+        '<uses-permission android:name="android.permission.INTERNET" />\n\n'
+        '原始错误: $e'
+      );
     }
   }
 

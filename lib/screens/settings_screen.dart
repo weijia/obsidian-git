@@ -178,6 +178,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         autoSync: savedConfig.autoSync,
       );
       await _settingsService.setGitConfig(configWithLocalPath);
+
+      // 克隆/更新成功后，自动返回首页并刷新文件列表
+      if (mounted) {
+        _showStatus(isExistingRepo ? '仓库已更新，正在返回...' : '仓库克隆成功，正在返回...', success: true);
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          Navigator.pop(context, true); // 返回 true 表示需要刷新
+        }
+      }
     } catch (e) {
       _showStatus('操作失败: $e', success: false);
     } finally {

@@ -574,8 +574,15 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (context) => const SettingsScreen(),
       ),
-    ).then((_) {
+    ).then((result) {
       // 返回设置页面后重新初始化服务
+      // result 为 true 表示需要强制刷新（如 clone/fetch 成功）
+      if (result == true) {
+        // 重置初始化状态，强制重新加载
+        setState(() {
+          _isInitialized = false;
+        });
+      }
       _initServices();
     });
   }

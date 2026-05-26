@@ -30,6 +30,18 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _initError;
   bool _isSourceMode = false; // 源码模式状态
 
+  // 调试日志（显示在界面上，不需要 adb）
+  final List<String> _debugLogs = [];
+  bool _showDebugPanel = false;
+
+  void _log(String message) {
+    final timestamp = DateTime.now().toString().substring(11, 19);
+    final line = '[$timestamp] $message';
+    print(line);
+    _debugLogs.add(line);
+    if (_debugLogs.length > 100) _debugLogs.removeAt(0);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,47 +55,66 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initServices() async {
     try {
       // 加载设置
+      _log('开始初始化...');
       await _settingsService.loadSettings();
+
+      final config = _settingsService.gitConfig;
+      _log('配置加载结果: ${config != null ? "有配置" : "无配置"}');
+      if (config != null) {
+        _log('  repoUrl: ${config.repoUrl}');
+        _log('  localPath: "${config.localPath}"');
+        _log('  branch: ${config.branch}');
+        _log('  email: ${config.email}');
+      }
 
       // 确定存储路径
       String? storagePath;
 
       // 如果配置了 Git 仓库，使用 Git 仓库路径
-      if (_settingsService.gitConfig != null &&
-          _settingsService.gitConfig!.localPath.isNotEmpty) {
-        storagePath = _settingsService.gitConfig!.localPath;
-      } else if (_settingsService.gitConfig != null &&
-          _settingsService.gitConfig!.repoUrl.isNotEmpty) {
+      if (config != null && config.localPath.isNotEmpty) {
+        storagePath = config.localPath;
+        _log('使用配置中的 localPath: $storagePath');
+      } else if (config != null && config.repoUrl.isNotEmpty) {
         // 配置存在但 localPath 为空（可能保存失败），重新获取路径
         storagePath = await _gitService.getRepoPath();
-        print('localPath 为空，重新获取: $storagePath');
+        _log('localPath 为空，重新获取: $storagePath');
+      } else {
+        _log('无 Git 配置，使用默认路径');
       }
 
       // 如果有 Git 配置，初始化 Git 服务
-      if (_settingsService.gitConfig != null &&
-          _settingsService.gitConfig!.repoUrl.isNotEmpty) {
+      if (config != null && config.repoUrl.isNotEmpty) {
         try {
           await _gitService.initialize();
+          _log('Git 服务初始化成功');
         } catch (e) {
-          print('Git 服务初始化失败: $e');
+          _log('Git 服务初始化失败: $e');
         }
       }
 
       // 初始化存储服务
       await _storageService.init(storagePath);
-      print('存储路径: ${_storageService.basePath}');
+      _log('存储路径: ${_storageService.basePath}');
 
       // 检查目录下是否有 .md 文件
       if (_storageService.basePath != null) {
         final dir = Directory(_storageService.basePath!);
         if (await dir.exists()) {
-          final mdCount = await dir.list(recursive: true)
+          final mdFiles = await dir.list(recursive: true)
               .where((e) => e is File && e.path.endsWith('.md'))
-              .length;
-          print('目录 ${_storageService.basePath} 下有 $mdCount 个 .md 文件');
+              .toList();
+          _log('目录 ${_storageService.basePath} 下有 ${mdFiles.length} 个 .md 文件');
+          for (final f in mdFiles.take(10)) {
+            _log('  📄 ${f.path}');
+          }
+          if (mdFiles.length > 10) {
+            _log('  ... 还有 ${mdFiles.length - 10} 个文件');
+          }
         } else {
-          print('目录 ${_storageService.basePath} 不存在！');
+          _log('⚠️ 目录 ${_storageService.basePath} 不存在！');
         }
+      } else {
+        _log('⚠️ basePath 为 null！');
       }
 
       setState(() {
@@ -91,8 +122,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       _notesBloc.add(const LoadNotes());
-    } catch (e) {
-      print('_initServices 异常: $e');
+      _log('初始化完成，已发送 LoadNotes 事件');
+    } catch (e, stack) {
+      _log('❌ _initServices 异常: $e');
+      _log('堆栈: $stack');
       setState(() {
         _initError = e.toString();
         _isInitialized = true;
@@ -431,6 +464,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 case 'share':
                   _shareNote(state.selectedNote);
                   break;
+                case 'debug':
+                  _showDebugLog();
+                  break;
               }
             },
             itemBuilder: (context) => [
@@ -472,6 +508,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
                     const SizedBox(width: 8),
                     Text('删除笔记', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'debug',
+                child: Row(
+                  children: [
+                    Icon(Icons.bug_report, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('调试日志', style: TextStyle(color: Colors.orange)),
                   ],
                 ),
               ),
@@ -585,6 +632,56 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
             child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示调试日志弹窗
+  void _showDebugLog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('🔍 调试日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: _debugLogs.isEmpty
+              ? const Center(child: Text('暂无日志'))
+              : ListView.builder(
+                  itemCount: _debugLogs.length,
+                  itemBuilder: (context, index) {
+                    final log = _debugLogs[index];
+                    final isError = log.contains('❌') || log.contains('⚠️');
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: Text(
+                        log,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: isError ? Colors.red : Colors.black87,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              // 复制日志到剪贴板
+              Clipboard.setData(ClipboardData(text: _debugLogs.join('\n')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('日志已复制到剪贴板')),
+              );
+            },
+            child: const Text('复制全部'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
           ),
         ],
       ),

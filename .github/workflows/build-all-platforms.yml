@@ -106,7 +106,27 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Setup Release Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Setting up release keystore..."
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release-key.jks
+            echo "Release keystore created"
+          else
+            echo "No keystore provided, will use debug signing"
+          fi
+
       - name: Build APK
+        env:
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_BASE64 != '' && 'release-key.jks' || '' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           flutter build apk --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \
@@ -114,6 +134,11 @@ jobs:
             ${{ needs.generate-version.outputs.dart_defines }}
 
       - name: Build App Bundle
+        env:
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_BASE64 != '' && 'release-key.jks' || '' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           flutter build appbundle --release \
             --build-name=${{ needs.generate-version.outputs.version_name }} \

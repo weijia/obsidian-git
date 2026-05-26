@@ -26,9 +26,31 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            // 从环境变量或本地配置文件加载签名信息
+            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "release-key.jks"
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            val keyAlias = System.getenv("KEY_ALIAS") ?: "release"
+            val keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            
+            if (file(keystorePath).exists() && keystorePassword.isNotEmpty()) {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            // 如果有 release 签名配置则使用，否则使用 debug
+            signingConfig = if (signingConfigs.findByName("release")?.storeFile?.exists() == true) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

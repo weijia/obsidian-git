@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../models/folder.dart';
@@ -51,18 +52,39 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_settingsService.gitConfig != null &&
           _settingsService.gitConfig!.localPath.isNotEmpty) {
         storagePath = _settingsService.gitConfig!.localPath;
+      } else if (_settingsService.gitConfig != null &&
+          _settingsService.gitConfig!.repoUrl.isNotEmpty) {
+        // 配置存在但 localPath 为空（可能保存失败），重新获取路径
+        storagePath = await _gitService.getRepoPath();
+        print('localPath 为空，重新获取: $storagePath');
+      }
 
-        // 初始化 Git 服务（可能失败，但不阻止应用启动）
+      // 如果有 Git 配置，初始化 Git 服务
+      if (_settingsService.gitConfig != null &&
+          _settingsService.gitConfig!.repoUrl.isNotEmpty) {
         try {
           await _gitService.initialize();
         } catch (e) {
           print('Git 服务初始化失败: $e');
-          // 继续执行，Git 功能将不可用
         }
       }
 
-      // 初始化存储服务（如果没有 Git 配置，会使用默认应用文档目录）
+      // 初始化存储服务
       await _storageService.init(storagePath);
+      print('存储路径: ${_storageService.basePath}');
+
+      // 检查目录下是否有 .md 文件
+      if (_storageService.basePath != null) {
+        final dir = Directory(_storageService.basePath!);
+        if (await dir.exists()) {
+          final mdCount = await dir.list(recursive: true)
+              .where((e) => e is File && e.path.endsWith('.md'))
+              .length;
+          print('目录 ${_storageService.basePath} 下有 $mdCount 个 .md 文件');
+        } else {
+          print('目录 ${_storageService.basePath} 不存在！');
+        }
+      }
 
       setState(() {
         _isInitialized = true;
@@ -70,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _notesBloc.add(const LoadNotes());
     } catch (e) {
+      print('_initServices 异常: $e');
       setState(() {
         _initError = e.toString();
         _isInitialized = true;

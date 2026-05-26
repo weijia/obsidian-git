@@ -54,59 +54,96 @@ class SettingsService {
 
   /// 加载设置
   ///
-  /// Android 上同时尝试从公共目录和旧的应用私有目录加载
+  /// Android 上尝试从多个位置加载：公共目录 -> 应用私有目录
   Future<void> loadSettings() async {
     try {
-      // 优先从新位置（公共目录）加载
-      _settingsPath = await _getSettingsFilePath();
-      var file = File(_settingsPath!);
-
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final json = jsonDecode(content) as Map<String, dynamic>;
-        _gitConfig = _gitConfigFromJson(json['gitConfig']);
-        return;
-      }
-
-      // Android: 尝试从旧位置（应用私有目录）迁移
+      // Android: 优先尝试公共目录（即使写入测试失败，读取可能成功）
       if (Platform.isAndroid) {
-        final appDir = await getApplicationDocumentsDirectory();
-        final oldPath = p.join(appDir.path, _settingsFileName);
-        final oldFile = File(oldPath);
-        if (await oldFile.exists()) {
-          final content = await oldFile.readAsString();
-          final json = jsonDecode(content) as Map<String, dynamic>;
-          _gitConfig = _gitConfigFromJson(json['gitConfig']);
-          // 迁移到新位置
-          await saveSettings();
-          // 删除旧文件
+        final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
+        final publicPath = p.join(publicDir.path, _settingsFileName);
+        final publicFile = File(publicPath);
+        
+        if (await publicFile.exists()) {
           try {
-            await oldFile.delete();
-          } catch (_) {}
-          return;
+            final content = await publicFile.readAsString();
+            final json = jsonDecode(content) as Map<String, dynamic>;
+            _gitConfig = _gitConfigFromJson(json['gitConfig']);
+            _settingsPath = publicPath;
+            print('从公共目录加载配置: $publicPath');
+            return;
+          } catch (e) {
+            print('公共目录读取失败: $e');
+          }
         }
       }
 
-      // 没有找到设置文件，使用默认值
+      // 尝试应用私有目录
+      final appDir = await getApplicationDocumentsDirectory();
+      final privatePath = p.join(appDir.path, _settingsFileName);
+      final privateFile = File(privatePath);
+      
+      if (await privateFile.exists()) {
+        try {
+          final content = await privateFile.readAsString();
+          final json = jsonDecode(content) as Map<String, dynamic>;
+          _gitConfig = _gitConfigFromJson(json['gitConfig']);
+          _settingsPath = privatePath;
+          print('从应用私有目录加载配置: $privatePath');
+          return;
+        } catch (e) {
+          print('应用私有目录读取失败: $e');
+        }
+      }
+
+      // 没有找到设置文件
+      print('未找到配置文件');
       _gitConfig = null;
+      _settingsPath = null;
     } catch (e) {
-      // 加载失败时忽略错误，使用默认设置
+      print('loadSettings 异常: $e');
       _gitConfig = null;
+      _settingsPath = null;
     }
   }
 
   /// 保存设置
+  ///
+  /// Android: 优先尝试公共目录，失败则降级到应用私有目录
   Future<void> saveSettings() async {
     try {
-      _settingsPath ??= await _getSettingsFilePath();
-      final file = File(_settingsPath!);
       final json = <String, dynamic>{};
       if (_gitConfig != null) {
         json['gitConfig'] = _gitConfigToJson(_gitConfig!);
       }
-      await file.writeAsString(jsonEncode(json));
+      final jsonStr = jsonEncode(json);
+
+      // Android: 优先尝试公共目录
+      if (Platform.isAndroid) {
+        try {
+          final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
+          if (!await publicDir.exists()) {
+            await publicDir.create(recursive: true);
+          }
+          final publicPath = p.join(publicDir.path, _settingsFileName);
+          final publicFile = File(publicPath);
+          await publicFile.writeAsString(jsonStr);
+          _settingsPath = publicPath;
+          print('配置已保存到公共目录: $publicPath');
+          return;
+        } catch (e) {
+          print('公共目录保存失败: $e，尝试应用私有目录');
+        }
+      }
+
+      // 降级到应用私有目录
+      final appDir = await getApplicationDocumentsDirectory();
+      final privatePath = p.join(appDir.path, _settingsFileName);
+      final privateFile = File(privatePath);
+      await privateFile.writeAsString(jsonStr);
+      _settingsPath = privatePath;
+      print('配置已保存到应用私有目录: $privatePath');
     } catch (e) {
-      // 保存失败时忽略错误
+      print('saveSettings 失败: $e');
     }
   }
 

@@ -27,13 +27,24 @@ class SettingsService {
   /// - 其他平台: 应用文档目录/obsidian_git_settings.json
   Future<String> _getSettingsFilePath() async {
     if (Platform.isAndroid) {
-      // Android: 保存到公共 Documents 目录，卸载后不会丢失
+      // Android: 尝试保存到公共 Documents 目录
       // /storage/emulated/0/Documents/ObsidianGit/
-      final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
-      if (!await publicDir.exists()) {
-        await publicDir.create(recursive: true);
+      try {
+        final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
+        if (!await publicDir.exists()) {
+          await publicDir.create(recursive: true);
+        }
+        // 测试是否有写入权限
+        final testFile = File(p.join(publicDir.path, '.write_test'));
+        await testFile.writeAsString('test');
+        await testFile.delete();
+        return p.join(publicDir.path, _settingsFileName);
+      } catch (e) {
+        // 公共目录访问失败，降级到应用私有目录
+        print('公共 Documents 目录访问失败: $e，使用应用私有目录');
+        final appDir = await getApplicationDocumentsDirectory();
+        return p.join(appDir.path, _settingsFileName);
       }
-      return p.join(publicDir.path, _settingsFileName);
     } else {
       // 其他平台：使用应用文档目录
       final appDir = await getApplicationDocumentsDirectory();

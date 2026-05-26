@@ -22,7 +22,6 @@ on:
 env:
   FLUTTER_VERSION: ${{ inputs.flutter_version || '3.35.6' }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  SELECTED_PLATFORMS: ${{ inputs.platforms || 'android,ios,macos,linux,windows' }}
 
 jobs:
   generate-version:
@@ -35,11 +34,20 @@ jobs:
       build_datetime: ${{ steps.version.outputs.build_datetime }}
       build_timezone: ${{ steps.version.outputs.build_timezone }}
       dart_defines: ${{ steps.version.outputs.dart_defines }}
+      selected_platforms: ${{ steps.platforms.outputs.selected }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Determine Platforms
+        id: platforms
+        run: |
+          # 使用 inputs.platforms（手动触发）或默认全平台（push 触发）
+          PLATFORMS="${{ inputs.platforms || 'android,ios,macos,linux,windows' }}"
+          echo "selected=$PLATFORMS" >> $GITHUB_OUTPUT
+          echo "Selected platforms: $PLATFORMS"
 
       - name: Generate Version
         id: version
@@ -81,7 +89,7 @@ jobs:
   build-android:
     needs: generate-version
     runs-on: ubuntu-latest
-    if: contains(env.SELECTED_PLATFORMS, 'android')
+    if: contains(needs.generate-version.outputs.selected_platforms, 'android')
     steps:
       - uses: actions/checkout@v4
 
@@ -128,7 +136,7 @@ jobs:
   build-ios:
     needs: generate-version
     runs-on: macos-latest
-    if: contains(env.SELECTED_PLATFORMS, 'ios')
+    if: contains(needs.generate-version.outputs.selected_platforms, 'ios')
     steps:
       - uses: actions/checkout@v4
 
@@ -157,7 +165,7 @@ jobs:
   build-macos:
     needs: generate-version
     runs-on: macos-latest
-    if: contains(env.SELECTED_PLATFORMS, 'macos')
+    if: contains(needs.generate-version.outputs.selected_platforms, 'macos')
     steps:
       - uses: actions/checkout@v4
 
@@ -191,7 +199,7 @@ jobs:
   build-linux:
     needs: generate-version
     runs-on: ubuntu-latest
-    if: contains(env.SELECTED_PLATFORMS, 'linux')
+    if: contains(needs.generate-version.outputs.selected_platforms, 'linux')
     steps:
       - uses: actions/checkout@v4
 
@@ -254,7 +262,7 @@ jobs:
   build-windows:
     needs: generate-version
     runs-on: windows-latest
-    if: contains(env.SELECTED_PLATFORMS, 'windows')
+    if: contains(needs.generate-version.outputs.selected_platforms, 'windows')
     steps:
       - uses: actions/checkout@v4
 

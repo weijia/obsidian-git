@@ -6,10 +6,23 @@ on:
       - '**'
     tags-ignore:
       - '**'
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: '选择要构建的平台（多选用逗号分隔）'
+        required: false
+        default: 'android,ios,macos,linux,windows'
+        type: string
+      flutter_version:
+        description: 'Flutter 版本（留空使用默认 3.35.6）'
+        required: false
+        default: ''
+        type: string
 
 env:
-  FLUTTER_VERSION: '3.35.6'
+  FLUTTER_VERSION: ${{ inputs.flutter_version || '3.35.6' }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SELECTED_PLATFORMS: ${{ inputs.platforms || 'android,ios,macos,linux,windows' }}
 
 jobs:
   generate-version:
@@ -68,6 +81,7 @@ jobs:
   build-android:
     needs: generate-version
     runs-on: ubuntu-latest
+    if: contains(env.SELECTED_PLATFORMS, 'android')
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +128,7 @@ jobs:
   build-ios:
     needs: generate-version
     runs-on: macos-latest
+    if: contains(env.SELECTED_PLATFORMS, 'ios')
     steps:
       - uses: actions/checkout@v4
 
@@ -142,6 +157,7 @@ jobs:
   build-macos:
     needs: generate-version
     runs-on: macos-latest
+    if: contains(env.SELECTED_PLATFORMS, 'macos')
     steps:
       - uses: actions/checkout@v4
 
@@ -175,6 +191,7 @@ jobs:
   build-linux:
     needs: generate-version
     runs-on: ubuntu-latest
+    if: contains(env.SELECTED_PLATFORMS, 'linux')
     steps:
       - uses: actions/checkout@v4
 
@@ -237,6 +254,7 @@ jobs:
   build-windows:
     needs: generate-version
     runs-on: windows-latest
+    if: contains(env.SELECTED_PLATFORMS, 'windows')
     steps:
       - uses: actions/checkout@v4
 

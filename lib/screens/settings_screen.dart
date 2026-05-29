@@ -129,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 克隆或更新仓库
+  /// 克隆或更新仓库（异步操作，显示进度对话框）
   Future<void> _cloneOrUpdateRepo() async {
     final repoUrl = _repoUrlController.text.trim();
     if (repoUrl.isEmpty) {
@@ -137,30 +137,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    final localPath = await _gitService.getRepoPath();
+    final isExistingRepo = _gitService.isGitRepo(localPath);
+    final config = _buildConfig();
+
+    // 显示进度对话框
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CloneProgressDialog(
+        isExistingRepo: isExistingRepo,
+        onCancel: () {
+          // 取消操作（当前版本不支持真正取消，只是关闭对话框）
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+
     setState(() => _isCloning = true);
 
     try {
-      final localPath = await _gitService.getRepoPath();
-      final isExistingRepo = _gitService.isGitRepo(localPath);
-      final config = _buildConfig();
-
       if (isExistingRepo) {
         // 已存在，执行 fetch
         await _gitService.fetch(
           config: config,
           localPath: localPath,
         );
-        _showStatus('仓库已更新', success: true);
       } else {
         // 克隆新仓库
         await _gitService.clone(
           config: config,
           localPath: localPath,
         );
-        _showStatus('仓库克隆成功', success: true);
       }
 
-      // 关键：将实际本地路径保存到设置中，否则 App 重启后找不到仓库
+      // 关键：将实际本地路径保存到设置中
       final savedConfig = _buildConfig();
       final configWithLocalPath = GitConfig(
         repoUrl: savedConfig.repoUrl,
@@ -179,12 +191,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       await _settingsService.setGitConfig(configWithLocalPath);
 
-      // 克隆/更新成功后，自动返回首页并刷新文件列表
+      // 关闭进度对话框
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // 显示成功提示并返回
       if (mounted) {
-        _showStatus(isExistingRepo ? '仓库已更新，正在返回...' : '仓库克隆成功，正在返回...', success: true);
-        await Future.delayed(const Duration(milliseconds: 800));
+        _showStatus(isExistingRepo ? '仓库已更新' : '仓库克隆成功', success: true);
+        await Future.delayed(const Duration(milliseconds: 500));
         if (mounted) {
-          Navigator.pop(context, true); // 返回 true 表示需要刷新
+          Navigator.pop(context, true);
         }
       }
     } catch (e) {
@@ -821,6 +838,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 克隆/更新进度对话框
+class _CloneProgressDialog extends StatefulWidget {
+  final bool isExistingRepo;
+  final VoidCallback onCancel;
+
+  const _CloneProgressDialog({
+    required this.isExistingRepo,
+    required this.onCancel,
+  });
+
+  @override
+  State<_CloneProgressDialog> createState() => _CloneProgressDialogState();
+}
+
+class _CloneProgressDialogState extends State<_CloneProgressDialog>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.isExistingRepo ? '正在更新仓库...' : '正在克隆仓库...'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 16),
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return CircularProgressIndicator(
+                value: null, // 不确定进度
+                strokeWidth: 4,
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          Text(
+            widget.isExistingRepo
+                ? '正在从远程获取更新...\n请保持网络连接'
+                : '正在克隆远程仓库...\n这可能需要几分钟，请保持网络连接',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '⏳ 请稍候...',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: const Text('取消'),
+        ),
+      ],
     );
   }
 }

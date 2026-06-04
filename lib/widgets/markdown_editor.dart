@@ -218,10 +218,13 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   Widget _buildToolbar() {
     final colorScheme = Theme.of(context).colorScheme;
 
+    // 检测光标是否在表格内
+    final isInTable = _isCursorInTable();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
+        color: isInTable ? colorScheme.primaryContainer.withAlpha(128) : colorScheme.surfaceContainerLow,
         border: Border(
           bottom: BorderSide(
             color: colorScheme.outlineVariant.withAlpha(128),
@@ -232,6 +235,42 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            if (isInTable) ...[
+              // 表格内专用操作按钮
+              _buildToolbarButton(
+                icon: Icons.add,
+                tooltip: '在下方插入行',
+                onPressed: () => _tableAction(TableDirection.row, TableActions.add),
+              ),
+              _buildToolbarButton(
+                icon: Icons.add_box_outlined,
+                tooltip: '在右侧插入列',
+                onPressed: () => _tableAction(TableDirection.col, TableActions.add),
+              ),
+              _buildToolbarButton(
+                icon: Icons.delete_outline,
+                tooltip: '删除当前行',
+                onPressed: () => _tableAction(TableDirection.row, TableActions.delete),
+              ),
+              _buildToolbarButton(
+                icon: Icons.delete_sweep_outlined,
+                tooltip: '删除当前列',
+                onPressed: () => _tableAction(TableDirection.col, TableActions.delete),
+              ),
+              _buildToolbarButton(
+                icon: Icons.content_copy,
+                tooltip: '复制当前行',
+                onPressed: () => _tableAction(TableDirection.row, TableActions.duplicate),
+              ),
+              _buildToolbarButton(
+                icon: Icons.clear_all,
+                tooltip: '清空单元格',
+                onPressed: () => _tableAction(TableDirection.row, TableActions.clear),
+              ),
+              const SizedBox(width: 8),
+              _buildDivider(),
+              const SizedBox(width: 8),
+            ],
             _buildToolbarButton(
               icon: Icons.title,
               tooltip: '标题 H1',
@@ -305,6 +344,63 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         ),
       ),
     );
+  }
+
+  /// 检测当前光标是否在表格内
+  bool _isCursorInTable() {
+    final selection = _editorState.selection;
+    if (selection == null) return false;
+
+    final node = _editorState.getNodeAtPath(selection.end.path);
+    if (node == null) return false;
+
+    // 向上查找父节点，检查是否有表格类型
+    var current = node;
+    while (current.parent != null) {
+      if (current.type == TableCellBlockKeys.type ||
+          current.type == TableBlockKeys.type) {
+        return true;
+      }
+      current = current.parent!;
+    }
+
+    return false;
+  }
+
+  /// 执行表格操作
+  void _tableAction(TableDirection direction, Function action) {
+    final selection = _editorState.selection;
+    if (selection == null) return;
+
+    final node = _editorState.getNodeAtPath(selection.end.path);
+    if (node == null) return;
+
+    // 找到表格节点和单元格位置
+    Node? tableNode;
+    Node? cellNode;
+    var current = node;
+    while (current.parent != null) {
+      if (current.type == TableCellBlockKeys.type) {
+        cellNode = current;
+      }
+      if (current.type == TableBlockKeys.type) {
+        tableNode = current;
+        break;
+      }
+      current = current.parent!;
+    }
+
+    if (tableNode == null || cellNode == null) return;
+
+    // 获取单元格位置
+    final colPosition = cellNode.attributes[TableCellBlockKeys.colPosition] as int? ?? 0;
+    final rowPosition = cellNode.attributes[TableCellBlockKeys.rowPosition] as int? ?? 0;
+
+    // 计算在表格中的索引位置
+    final index = direction == TableDirection.row ? rowPosition : colPosition;
+
+    // 执行操作
+    action(tableNode, index, _editorState, direction);
   }
 
   Widget _buildToolbarButton({

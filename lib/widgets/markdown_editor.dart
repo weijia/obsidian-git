@@ -368,7 +368,10 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   }
 
   /// 执行表格操作
-  void _tableAction(TableDirection direction, Function action) {
+  void _tableAction(
+    TableDirection direction,
+    void Function(Node, int, EditorState, TableDirection) action,
+  ) {
     final selection = _editorState.selection;
     if (selection == null) return;
 

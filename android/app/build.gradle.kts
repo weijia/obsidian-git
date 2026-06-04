@@ -28,17 +28,20 @@ android {
 
     signingConfigs {
         create("release") {
-            // 从环境变量或本地配置文件加载签名信息
-            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "release-key.jks"
-            val keystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-            val keyAlias = System.getenv("KEY_ALIAS") ?: "release"
-            val keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            // 从环境变量加载签名信息
+            val keystorePath = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+            val keyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "release"
+            val keyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
             
-            if (file(keystorePath).exists() && keystorePassword.isNotEmpty()) {
-                storeFile = file(keystorePath)
-                storePassword = keystorePassword
-                this.keyAlias = keyAlias
-                this.keyPassword = keyPassword
+            if (keystorePath != null && keystorePassword != null) {
+                val keystoreFile = file(keystorePath)
+                if (keystoreFile.exists()) {
+                    storeFile = keystoreFile
+                    storePassword = keystorePassword
+                    this.keyAlias = keyAlias
+                    this.keyPassword = keyPassword ?: keystorePassword
+                }
             }
         }
     }

@@ -235,6 +235,20 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            // 撤销 / 重做
+            _buildToolbarButton(
+              icon: Icons.undo,
+              tooltip: '撤销',
+              onPressed: _undo,
+            ),
+            _buildToolbarButton(
+              icon: Icons.redo,
+              tooltip: '重做',
+              onPressed: _redo,
+            ),
+            const SizedBox(width: 8),
+            _buildDivider(),
+            const SizedBox(width: 8),
             if (isInTable) ...[
               // 表格内专用操作按钮
               _buildToolbarButton(
@@ -439,6 +453,16 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       width: 1,
       color: Theme.of(context).colorScheme.outlineVariant.withAlpha(128),
     );
+  }
+
+  // ============== 撤销 / 重做 ==============
+
+  void _undo() {
+    _editorState.undoManager.undo();
+  }
+
+  void _redo() {
+    _editorState.undoManager.redo();
   }
 
   // ============== 文本格式化 ==============

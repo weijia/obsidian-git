@@ -165,7 +165,7 @@ jobs:
           sftp-username: ${{ secrets.SFTP_USERNAME }}
           sftp-password: ${{ secrets.SFTP_PASSWORD }}
           source-path: build/app/outputs/flutter-apk/app-release.apk
-          remote-path: /home/github/apps/obsidian-git/app-release.apk
+          remote-path: /home/github/apps/obsidian-git/app-release-${{ needs.generate-version.outputs.version_name }}.apk
           cleanup-old-files: 'true'
           max-keep-files: '5'
 

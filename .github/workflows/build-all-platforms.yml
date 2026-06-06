@@ -158,7 +158,7 @@ jobs:
           path: build/app/outputs/bundle/release/*.aab
 
       - name: Upload APK to SFTP
-        uses: weijia/action-upload-sftp@49e0a04
+        uses: weijia/action-upload-sftp@49e0a04926847a1e4a29ab33e07ac372092a92a8
         with:
           sftp-host: ${{ secrets.SFTP_HOST }}
           sftp-port: ${{ secrets.SFTP_PORT }}

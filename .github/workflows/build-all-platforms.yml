@@ -157,6 +157,30 @@ jobs:
           name: android-aab-${{ needs.generate-version.outputs.version_name }}
           path: build/app/outputs/bundle/release/*.aab
 
+      - name: Upload APK to SFTP
+        uses: weijia/action-upload-sftp@v1.0.0
+        with:
+          sftp-host: ${{ secrets.SFTP_HOST }}
+          sftp-port: ${{ secrets.SFTP_PORT }}
+          sftp-username: ${{ secrets.SFTP_USERNAME }}
+          sftp-password: ${{ secrets.SFTP_PASSWORD }}
+          source-path: build/app/outputs/flutter-apk/app-release.apk
+          remote-path: /home/github/apps/obsidian-git/app-release.apk
+          cleanup-old-files: 'true'
+          max-keep-files: '5'
+
+      - name: Upload AAB to SFTP
+        uses: weijia/action-upload-sftp@v1.0.0
+        with:
+          sftp-host: ${{ secrets.SFTP_HOST }}
+          sftp-port: ${{ secrets.SFTP_PORT }}
+          sftp-username: ${{ secrets.SFTP_USERNAME }}
+          sftp-password: ${{ secrets.SFTP_PASSWORD }}
+          source-path: build/app/outputs/bundle/release/app-release.aab
+          remote-path: /home/github/apps/obsidian-git/app-release.aab
+          cleanup-old-files: 'true'
+          max-keep-files: '5'
+
   # ==================== iOS ====================
   build-ios:
     needs: generate-version

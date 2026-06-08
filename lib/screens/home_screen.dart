@@ -440,13 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           // 同步按钮
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: state.isSyncing
-                ? null
-                : () => _notesBloc.add(const SyncWithGit()),
-            tooltip: '同步到 Git',
-          ),
+          _buildSyncButton(context, state),
           // 更多菜单
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
@@ -526,6 +520,52 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// 构建同步按钮（根据状态显示不同图标）
+  Widget _buildSyncButton(BuildContext context, NotesLoaded state) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    IconData icon;
+    Color? iconColor;
+    String tooltip;
+    VoidCallback? onPressed;
+
+    if (state.isSyncing) {
+      icon = Icons.sync;
+      iconColor = colorScheme.primary;
+      tooltip = '同步中...';
+      onPressed = null;
+    } else if (state.syncError != null && state.syncError!.isNotEmpty) {
+      icon = Icons.error_outline;
+      iconColor = colorScheme.error;
+      tooltip = '同步失败，点击重试';
+      onPressed = () => _notesBloc.add(const SyncWithGit());
+    } else {
+      icon = Icons.cloud_done;
+      iconColor = colorScheme.outline;
+      tooltip = '已同步';
+      onPressed = () => _notesBloc.add(const SyncWithGit());
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: IconButton(
+        key: ValueKey<String>('${icon}_${state.isSyncing}'),
+        icon: state.isSyncing
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: iconColor,
+                ),
+              )
+            : Icon(icon, color: iconColor),
+        onPressed: onPressed,
+        tooltip: tooltip,
       ),
     );
   }

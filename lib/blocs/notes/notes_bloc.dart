@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/note.dart';
 import '../../models/folder.dart';
 import '../../services/note_storage_service.dart';
 import '../../services/git_service.dart';
+import '../../services/settings_service.dart';
 
 // Events
 abstract class NotesEvent extends Equatable {
@@ -73,6 +73,10 @@ class SyncWithGit extends NotesEvent {
   const SyncWithGit();
 }
 
+class MarkUnsynced extends NotesEvent {
+  const MarkUnsynced();
+}
+
 // States
 abstract class NotesState extends Equatable {
   const NotesState();
@@ -93,6 +97,7 @@ class NotesLoaded extends NotesState {
   final String? searchQuery;
   final bool isSyncing;
   final String? syncError;
+  final bool hasUnsyncedChanges;
 
   const NotesLoaded({
     required this.notes,
@@ -102,6 +107,7 @@ class NotesLoaded extends NotesState {
     this.searchQuery,
     this.isSyncing = false,
     this.syncError,
+    this.hasUnsyncedChanges = false,
   });
 
   NotesLoaded copyWith({
@@ -112,6 +118,7 @@ class NotesLoaded extends NotesState {
     String? searchQuery,
     bool? isSyncing,
     String? syncError,
+    bool? hasUnsyncedChanges,
     bool clearSelectedNote = false,
     bool clearSyncError = false,
   }) {
@@ -123,6 +130,7 @@ class NotesLoaded extends NotesState {
       searchQuery: searchQuery ?? this.searchQuery,
       isSyncing: isSyncing ?? this.isSyncing,
       syncError: clearSyncError ? null : (syncError ?? this.syncError),
+      hasUnsyncedChanges: hasUnsyncedChanges ?? this.hasUnsyncedChanges,
     );
   }
 
@@ -135,6 +143,7 @@ class NotesLoaded extends NotesState {
         searchQuery,
         isSyncing,
         syncError,
+        hasUnsyncedChanges,
       ];
 }
 
@@ -150,12 +159,15 @@ class NotesError extends NotesState {
 class NotesBloc extends Bloc<NotesEvent, NotesState> {
   final NoteStorageService _storageService;
   final GitService _gitService;
+  final SettingsService _settingsService;
 
   NotesBloc({
     required NoteStorageService storageService,
     required GitService gitService,
+    required SettingsService settingsService,
   })  : _storageService = storageService,
         _gitService = gitService,
+        _settingsService = settingsService,
         super(NotesInitial()) {
     on<LoadNotes>(_onLoadNotes);
     on<CreateNote>(_onCreateNote);
@@ -164,6 +176,7 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     on<DeleteNote>(_onDeleteNote);
     on<SearchNotes>(_onSearchNotes);
     on<SyncWithGit>(_onSyncWithGit);
+    on<MarkUnsynced>(_onMarkUnsynced);
   }
 
   Future<void> _onLoadNotes(
@@ -204,6 +217,7 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       emit(currentState.copyWith(
         notes: updatedNotes,
         selectedNote: note,
+        hasUnsyncedChanges: true,
       ));
     } catch (e) {
       emit(NotesError(e.toString()));
@@ -217,7 +231,6 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     final currentState = state;
     if (currentState is! NotesLoaded) return;
 
-    // 加载完整笔记内容
     final note = await _storageService.getNote(event.note.filePath);
     emit(currentState.copyWith(selectedNote: note ?? event.note));
   }
@@ -239,6 +252,7 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       emit(currentState.copyWith(
         notes: updatedNotes,
         selectedNote: event.note,
+        hasUnsyncedChanges: true,
       ));
     } catch (e) {
       emit(NotesError(e.toString()));
@@ -262,6 +276,7 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       emit(currentState.copyWith(
         notes: updatedNotes,
         clearSelectedNote: currentState.selectedNote?.filePath == event.filePath,
+        hasUnsyncedChanges: true,
       ));
     } catch (e) {
       emit(NotesError(e.toString()));
@@ -289,6 +304,16 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     }
   }
 
+  Future<void> _onMarkUnsynced(
+    MarkUnsynced event,
+    Emitter<NotesState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! NotesLoaded) return;
+
+    emit(currentState.copyWith(hasUnsyncedChanges: true));
+  }
+
   Future<void> _onSyncWithGit(
     SyncWithGit event,
     Emitter<NotesState> emit,
@@ -296,56 +321,73 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     final currentState = state;
     if (currentState is! NotesLoaded) return;
 
-    emit(currentState.copyWith(isSyncing: true, clearSyncError: true));
+    emit(currentState.copyWith(
+      isSyncing: true,
+      clearSyncError: true,
+    ));
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final localPath = prefs.getString('git_local_path');
-      if (localPath == null || localPath.isEmpty) {
+      // 从 SettingsService 读取配置
+      final config = _settingsService.gitConfig;
+      if (config == null || config.localPath.isEmpty) {
         emit(currentState.copyWith(
           isSyncing: false,
-          syncError: '未配置 Git 仓库路径',
+          syncError: '未配置 Git 仓库',
         ));
         return;
       }
 
-      final authorName = prefs.getString('git_username') ?? 'Obsidian Git User';
-      final authorEmail = prefs.getString('git_email') ?? 'user@example.com';
-      final publicKey = prefs.getString('git_ssh_public_key');
+      // 1. 添加所有更改
+      _gitService.add(config.localPath, '.');
 
-      // 读取私钥
-      final sshKeyPath = prefs.getString('git_ssh_key_path');
-      String? privateKey;
-      if (sshKeyPath != null) {
-        final file = File(sshKeyPath);
-        if (await file.exists()) {
-          privateKey = await file.readAsString();
-        }
+      // 2. 提交到本地（如果有变更）
+      try {
+        _gitService.commit(
+          repoPath: config.localPath,
+          message: 'Sync from Obsidian Git at ${DateTime.now()}',
+          authorName: config.username ?? 'Obsidian Git User',
+          authorEmail: config.email ?? 'user@example.com',
+        );
+      } catch (e) {
+        // 没有变更需要提交，继续
+        print('No changes to commit: $e');
       }
-      final privateKeyPassword = prefs.getString('git_ssh_key_password');
 
-      final result = await _gitService.sync(
-        localPath: localPath,
-        authorName: authorName,
-        authorEmail: authorEmail,
-        publicKey: publicKey,
-        privateKey: privateKey,
-        privateKeyPassword: privateKeyPassword,
+      // 3. 拉取远程更新
+      final pullResult = await _gitService.pull(
+        config: config,
+        localPath: config.localPath,
       );
 
-      if (result.success) {
-        // 重新加载笔记
-        final notes = await _storageService.getAllNotes();
-        emit(currentState.copyWith(
-          notes: notes,
-          isSyncing: false,
-        ));
-      } else {
+      if (!pullResult.success) {
         emit(currentState.copyWith(
           isSyncing: false,
-          syncError: result.error,
+          syncError: '拉取失败: ${pullResult.error}',
         ));
+        return;
       }
+
+      // 4. 推送到远程
+      final pushResult = await _gitService.push(
+        config: config,
+        localPath: config.localPath,
+      );
+
+      if (!pushResult.success) {
+        emit(currentState.copyWith(
+          isSyncing: false,
+          syncError: '推送失败: ${pushResult.error}',
+        ));
+        return;
+      }
+
+      // 5. 重新加载笔记
+      final notes = await _storageService.getAllNotes();
+      emit(currentState.copyWith(
+        notes: notes,
+        isSyncing: false,
+        hasUnsyncedChanges: false,
+      ));
     } catch (e) {
       emit(currentState.copyWith(
         isSyncing: false,

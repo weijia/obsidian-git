@@ -49,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _notesBloc = NotesBloc(
       storageService: _storageService,
       gitService: _gitService,
+      settingsService: _settingsService,
     );
     _initServices();
   }
@@ -542,6 +543,11 @@ class _HomeScreenState extends State<HomeScreen> {
       icon = Icons.error_outline;
       iconColor = colorScheme.error;
       tooltip = '同步失败，点击重试';
+      onPressed = () => _notesBloc.add(const SyncWithGit());
+    } else if (state.hasUnsyncedChanges) {
+      icon = Icons.cloud_upload;
+      iconColor = colorScheme.primary;
+      tooltip = '有未同步的修改，点击上传';
       onPressed = () => _notesBloc.add(const SyncWithGit());
     } else {
       icon = Icons.cloud_done;

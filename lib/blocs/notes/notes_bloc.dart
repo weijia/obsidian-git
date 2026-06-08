@@ -354,29 +354,29 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       }
 
       // 3. 拉取远程更新
-      final pullResult = await _gitService.pull(
-        config: config,
-        localPath: config.localPath,
-      );
-
-      if (!pullResult.success) {
+      try {
+        await _gitService.pull(
+          config: config,
+          localPath: config.localPath,
+        );
+      } catch (e) {
         emit(currentState.copyWith(
           isSyncing: false,
-          syncError: '拉取失败: ${pullResult.error}',
+          syncError: '拉取失败: $e',
         ));
         return;
       }
 
       // 4. 推送到远程
-      final pushResult = await _gitService.push(
-        config: config,
-        localPath: config.localPath,
-      );
-
-      if (!pushResult.success) {
+      try {
+        await _gitService.push(
+          config: config,
+          localPath: config.localPath,
+        );
+      } catch (e) {
         emit(currentState.copyWith(
           isSyncing: false,
-          syncError: '推送失败: ${pushResult.error}',
+          syncError: '推送失败: $e',
         ));
         return;
       }

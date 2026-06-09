@@ -564,6 +564,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        // 用户名
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Git 用户名',
+                            hintText: '提交代码时显示的名字，如：zhangsan',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // 邮箱
+                        TextFormField(
+                          controller: _emailController,
+                          decoration: const InputDecoration(
+                            labelText: 'Git 邮箱',
+                            hintText: '提交代码时显示的邮箱，如：zhangsan@example.com',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        if (_authMethod == AuthMethod.https) ...[
+                          const SizedBox(height: 16),
+                          // HTTPS Token / 密码
+                          TextFormField(
+                            controller: _httpsTokenController,
+                            decoration: InputDecoration(
+                              labelText: '访问令牌或密码',
+                              hintText: 'Personal Access Token 或 Git 密码',
+                              helperText: '支持填写 Personal Access Token（推荐）'
+                                  '或 Git 账户密码。'
+                                  '公开仓库可留空。',
+                              helperMaxLines: 3,
+                              border: const OutlineInputBorder(),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showToken ? Icons.visibility_off : Icons.visibility,
+                                ),
+                                onPressed: () {
+                                  setState(() => _showToken = !_showToken);
+                                },
+                              ),
+                            ),
+                            obscureText: !_showToken,
+                            validator: (value) {
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '如何获取 Personal Access Token：\n'
+                            '  Gitee: 设置 -> 私人令牌 -> 生成新令牌\n'
+                            '  GitHub: Settings -> Developer settings -> Personal access tokens\n'
+                            '  如果没有 Token，也可以直接填写 Git 账户密码。',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
                         // 克隆/同步按钮
                         Row(
                           children: [
@@ -599,72 +659,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-
-                    // 用户信息
-                    _buildSection(
-                      title: '用户信息',
-                      icon: Icons.person,
-                      children: [
-                        TextFormField(
-                          controller: _usernameController,
-                          decoration: const InputDecoration(
-                            labelText: '用户名',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _emailController,
-                          decoration: const InputDecoration(
-                            labelText: '邮箱',
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // HTTPS Token 配置（仅在 HTTPS 模式下显示）
-                    if (_authMethod == AuthMethod.https)
-                      _buildSection(
-                        title: 'HTTPS 认证',
-                        icon: Icons.token,
-                        children: [
-                          TextFormField(
-                            controller: _httpsTokenController,
-                            decoration: InputDecoration(
-                              labelText: 'Personal Access Token',
-                              hintText: '请输入您的 Personal Access Token',
-                              border: const OutlineInputBorder(),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _showToken ? Icons.visibility_off : Icons.visibility,
-                                ),
-                                onPressed: () {
-                                  setState(() => _showToken = !_showToken);
-                                },
-                              ),
-                            ),
-                            obscureText: !_showToken,
-                            validator: (value) {
-                              // Token 是可选的（公开仓库不需要）
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '如何获取 Token：\n'
-                            '• Gitee: 设置 -> 私人令牌 -> 生成新令牌\n'
-                            '• GitHub: Settings -> Developer settings -> Personal access tokens',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    if (_authMethod == AuthMethod.https) const SizedBox(height: 24),
 
                     // 同步设置
                     _buildSection(

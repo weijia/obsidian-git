@@ -20,15 +20,30 @@ class SettingsService {
 
   GitConfig? get gitConfig => _gitConfig;
 
+  /// 检查是否有公共 Documents 目录的访问权限
+  Future<bool> hasPublicDocumentsAccess() async {
+    if (!Platform.isAndroid) return false;
+
+    try {
+      final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
+      if (!await publicDir.exists()) {
+        await publicDir.create(recursive: true);
+      }
+      // 测试写入权限
+      final testFile = File(p.join(publicDir.path, '.write_test'));
+      await testFile.writeAsString('test');
+      await testFile.delete();
+      return true;
+    } catch (e) {
+      print('公共 Documents 目录无访问权限: $e');
+      return false;
+    }
+  }
+
   /// 获取设置文件的保存路径
-  ///
-  /// - Android: /storage/emulated/0/Documents/ObsidianGit/obsidian_git_settings.json
-  ///   （公共目录，卸载 App 后保留）
-  /// - 其他平台: 应用文档目录/obsidian_git_settings.json
   Future<String> _getSettingsFilePath() async {
     if (Platform.isAndroid) {
       // Android: 尝试保存到公共 Documents 目录
-      // /storage/emulated/0/Documents/ObsidianGit/
       try {
         final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
         if (!await publicDir.exists()) {
@@ -57,40 +72,41 @@ class SettingsService {
   /// Android 上尝试从多个位置加载：公共目录 -> 应用私有目录
   Future<void> loadSettings() async {
     try {
-      // Android: 优先尝试公共目录（即使写入测试失败，读取可能成功）
+      // Android: 优先尝试公共目录
       if (Platform.isAndroid) {
         final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
         final publicPath = p.join(publicDir.path, _settingsFileName);
         
-        print('检查公共目录: $publicPath');
-        print('  目录是否存在: ${await publicDir.exists()}');
+        print('SettingsService: 检查公共目录: $publicPath');
+        print('SettingsService:   目录是否存在: ${await publicDir.exists()}');
         
         // 尝试列出目录内容（调试用）
         try {
           if (await publicDir.exists()) {
             final files = await publicDir.list().toList();
-            print('  目录下文件: ${files.map((f) => p.basename(f.path)).join(', ')}');
+            print('SettingsService:   目录下文件: ${files.map((f) => p.basename(f.path)).join(', ')}');
           }
         } catch (e) {
-          print('  列出目录失败: $e');
+          print('SettingsService:   列出目录失败: $e');
         }
         
         final publicFile = File(publicPath);
         final fileExists = await publicFile.exists();
-        print('  配置文件是否存在: $fileExists');
+        print('SettingsService:   配置文件是否存在: $fileExists');
         
         if (fileExists) {
           try {
             final content = await publicFile.readAsString();
-            print('  文件内容长度: ${content.length}');
+            print('SettingsService:   文件内容长度: ${content.length}');
+            print('SettingsService:   文件内容: $content');
             final json = jsonDecode(content) as Map<String, dynamic>;
             _gitConfig = _gitConfigFromJson(json['gitConfig']);
             _settingsPath = publicPath;
-            print('从公共目录加载配置成功: $publicPath');
+            print('SettingsService: 从公共目录加载配置成功: $publicPath');
             return;
           } catch (e, stack) {
-            print('公共目录读取失败: $e');
-            print('堆栈: $stack');
+            print('SettingsService: 公共目录读取失败: $e');
+            print('SettingsService: 堆栈: $stack');
           }
         }
       }
@@ -100,8 +116,8 @@ class SettingsService {
       final privatePath = p.join(appDir.path, _settingsFileName);
       final privateFile = File(privatePath);
       
-      print('检查应用私有目录: $privatePath');
-      print('  文件是否存在: ${await privateFile.exists()}');
+      print('SettingsService: 检查应用私有目录: $privatePath');
+      print('SettingsService:   文件是否存在: ${await privateFile.exists()}');
       
       if (await privateFile.exists()) {
         try {
@@ -109,21 +125,21 @@ class SettingsService {
           final json = jsonDecode(content) as Map<String, dynamic>;
           _gitConfig = _gitConfigFromJson(json['gitConfig']);
           _settingsPath = privatePath;
-          print('从应用私有目录加载配置成功: $privatePath');
+          print('SettingsService: 从应用私有目录加载配置成功: $privatePath');
           return;
         } catch (e, stack) {
-          print('应用私有目录读取失败: $e');
-          print('堆栈: $stack');
+          print('SettingsService: 应用私有目录读取失败: $e');
+          print('SettingsService: 堆栈: $stack');
         }
       }
 
       // 没有找到设置文件
-      print('未找到配置文件');
+      print('SettingsService: 未找到配置文件');
       _gitConfig = null;
       _settingsPath = null;
     } catch (e, stack) {
-      print('loadSettings 异常: $e');
-      print('堆栈: $stack');
+      print('SettingsService: loadSettings 异常: $e');
+      print('SettingsService: 堆栈: $stack');
       _gitConfig = null;
       _settingsPath = null;
     }
@@ -151,10 +167,10 @@ class SettingsService {
           final publicFile = File(publicPath);
           await publicFile.writeAsString(jsonStr);
           _settingsPath = publicPath;
-          print('配置已保存到公共目录: $publicPath');
+          print('SettingsService: 配置已保存到公共目录: $publicPath');
           return;
         } catch (e) {
-          print('公共目录保存失败: $e，尝试应用私有目录');
+          print('SettingsService: 公共目录保存失败: $e，尝试应用私有目录');
         }
       }
 
@@ -164,9 +180,9 @@ class SettingsService {
       final privateFile = File(privatePath);
       await privateFile.writeAsString(jsonStr);
       _settingsPath = privatePath;
-      print('配置已保存到应用私有目录: $privatePath');
+      print('SettingsService: 配置已保存到应用私有目录: $privatePath');
     } catch (e) {
-      print('saveSettings 失败: $e');
+      print('SettingsService: saveSettings 失败: $e');
     }
   }
 

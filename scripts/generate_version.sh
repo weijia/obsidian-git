@@ -1,6 +1,6 @@
 #!/bin/bash
 # 版本号生成脚本
-# 规则：有 git tag 用 tag，否则用 UTC+8 构建日期时间生成，标记时区
+# 规则：有 git tag 用 tag + build number，否则用 UTC+8 构建日期时间生成
 
 set -e
 
@@ -15,9 +15,25 @@ BUILD_DATETIME=""
 BUILD_TIMEZONE=""
 
 if [ -n "$TAG" ]; then
-    # 有 tag，使用 tag 作为版本号（去掉 v 前缀）
-    VERSION_NAME="${TAG#v}"
-    VERSION_NUMBER="1"
+    # 有 tag，使用 tag 作为基础版本号
+    BASE_VERSION="${TAG#v}"
+    
+    # 计算自 tag 之后的 commit 数量作为 build number
+    COMMIT_COUNT=$(git rev-list "${TAG}..HEAD" --count 2>/dev/null || echo "0")
+    
+    # 获取短 commit hash
+    COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    
+    if [ "$COMMIT_COUNT" -gt 0 ]; then
+        # tag 之后有新提交，追加 build number
+        VERSION_NAME="${BASE_VERSION}+${COMMIT_COUNT}"
+        VERSION_NUMBER="$COMMIT_COUNT"
+    else
+        # 正好在 tag 上
+        VERSION_NAME="${BASE_VERSION}"
+        VERSION_NUMBER="1"
+    fi
+    
     BUILD_TYPE="tag"
     BUILD_TAG="$TAG"
 else
@@ -30,7 +46,7 @@ else
     VERSION_NUMBER=$(echo "$TIMESTAMP" | sed 's/^.*\(.\{9\}\)$/\1/')
     # 确保不超过 2100000000
     if [ "$VERSION_NUMBER" -gt 2100000000 ]; then
-      VERSION_NUMBER=$((VERSION_NUMBER % 2100000000))
+        VERSION_NUMBER=$((VERSION_NUMBER % 2100000000))
     fi
     BUILD_TYPE="datetime"
     BUILD_TIMEZONE="UTC+8"

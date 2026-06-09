@@ -752,25 +752,17 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 打开 Android 存储权限设置页面
   Future<void> _openStoragePermissionSettings() async {
     try {
-      // 使用 Android Intent 打开"所有文件访问权限"设置页面
-      await Process.run('am', [
-        'start',
-        '-a',
-        'android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION',
-        '--pkg',
-        'com.obsidiangit.obsidian_git',  // 包名需要匹配
-      ]);
+      // 使用 MethodChannel 调用原生 Android 代码打开设置页面
+      const platform = MethodChannel('com.obsidiangit.obsidian_git/permissions');
+      await platform.invokeMethod('openStoragePermissionSettings');
+      _log('已请求打开存储权限设置页面');
     } catch (e) {
       _log('打开设置页面失败: $e');
       // 降级：打开应用详情页
       try {
-        await Process.run('am', [
-          'start',
-          '-a',
-          'android.settings.APPLICATION_DETAILS_SETTINGS',
-          '--pkg',
-          'com.obsidiangit.obsidian_git',
-        ]);
+        const platform = MethodChannel('com.obsidiangit.obsidian_git/permissions');
+        await platform.invokeMethod('openAppSettings');
+        _log('已请求打开应用设置页面');
       } catch (e2) {
         _log('打开应用详情页也失败: $e2');
       }

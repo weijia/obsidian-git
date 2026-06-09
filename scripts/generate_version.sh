@@ -26,7 +26,7 @@ if [ -n "$TAG" ]; then
     
     if [ "$COMMIT_COUNT" -gt 0 ]; then
         # tag 之后有新提交，追加 build number
-        VERSION_NAME="${BASE_VERSION}+${COMMIT_COUNT}"
+        VERSION_NAME="${BASE_VERSION}-${COMMIT_COUNT}"
         VERSION_NUMBER="$COMMIT_COUNT"
     else
         # 正好在 tag 上
@@ -38,9 +38,9 @@ if [ -n "$TAG" ]; then
     BUILD_TAG="$TAG"
 else
     # 无 tag，使用 UTC+8 构建日期时间生成版本号
-    # 格式: 0.0.0-YYYYMMDD.HHMMSS+08
+    # 格式: 0.0.0-YYYYMMDD.HHMMSS
     BUILD_DATETIME=$(TZ='Asia/Shanghai' date '+%Y%m%d.%H%M%S')
-    VERSION_NAME="0.0.0-${BUILD_DATETIME}+08"
+    VERSION_NAME="0.0.0-${BUILD_DATETIME}"
     # 用时间戳作为 build number（取后 9 位，确保不超过 Android 限制 2100000000）
     TIMESTAMP=$(TZ='Asia/Shanghai' date '+%Y%m%d%H%M%S')
     VERSION_NUMBER=$(echo "$TIMESTAMP" | sed 's/^.*\(.\{9\}\)$/\1/')

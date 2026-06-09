@@ -376,40 +376,6 @@ class _HomeScreenState extends State<HomeScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
-          // 存储模式指示器
-          if (_settingsService.gitConfig == null)
-            Tooltip(
-              message: '本地存储模式 - 点击配置 Git 同步',
-              child: TextButton.icon(
-                onPressed: () => _openSettings(context),
-                icon: const Icon(Icons.computer, size: 16),
-                label: const Text('本地'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-            )
-          else
-            Tooltip(
-              message: 'Git 同步已启用',
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.sync,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Git',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           const SizedBox(width: 8),
           // 同步状态
           if (state.isSyncing)

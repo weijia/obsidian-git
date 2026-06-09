@@ -18,7 +18,15 @@ class SettingsService {
   GitConfig? _gitConfig;
   String? _settingsPath;
 
+  // UI 状态
+  String? _lastOpenedNotePath;
+  String? _lastOpenedFolderPath;
+  bool _lastSourceMode = false;
+
   GitConfig? get gitConfig => _gitConfig;
+  String? get lastOpenedNotePath => _lastOpenedNotePath;
+  String? get lastOpenedFolderPath => _lastOpenedFolderPath;
+  bool get lastSourceMode => _lastSourceMode;
 
   /// 检查是否有公共 Documents 目录的访问权限
   Future<bool> hasPublicDocumentsAccess() async {
@@ -29,7 +37,6 @@ class SettingsService {
       if (!await publicDir.exists()) {
         await publicDir.create(recursive: true);
       }
-      // 测试写入权限
       final testFile = File(p.join(publicDir.path, '.write_test'));
       await testFile.writeAsString('test');
       await testFile.delete();
@@ -43,36 +50,29 @@ class SettingsService {
   /// 获取设置文件的保存路径
   Future<String> _getSettingsFilePath() async {
     if (Platform.isAndroid) {
-      // Android: 尝试保存到公共 Documents 目录
       try {
         final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
         if (!await publicDir.exists()) {
           await publicDir.create(recursive: true);
         }
-        // 测试是否有写入权限
         final testFile = File(p.join(publicDir.path, '.write_test'));
         await testFile.writeAsString('test');
         await testFile.delete();
         return p.join(publicDir.path, _settingsFileName);
       } catch (e) {
-        // 公共目录访问失败，降级到应用私有目录
         print('公共 Documents 目录访问失败: $e，使用应用私有目录');
         final appDir = await getApplicationDocumentsDirectory();
         return p.join(appDir.path, _settingsFileName);
       }
     } else {
-      // 其他平台：使用应用文档目录
       final appDir = await getApplicationDocumentsDirectory();
       return p.join(appDir.path, _settingsFileName);
     }
   }
 
   /// 加载设置
-  ///
-  /// Android 上尝试从多个位置加载：公共目录 -> 应用私有目录
   Future<void> loadSettings() async {
     try {
-      // Android: 优先尝试公共目录
       if (Platform.isAndroid) {
         final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
         final publicPath = p.join(publicDir.path, _settingsFileName);
@@ -80,7 +80,6 @@ class SettingsService {
         print('SettingsService: 检查公共目录: $publicPath');
         print('SettingsService:   目录是否存在: ${await publicDir.exists()}');
         
-        // 尝试列出目录内容（调试用）
         try {
           if (await publicDir.exists()) {
             final files = await publicDir.list().toList();
@@ -98,11 +97,17 @@ class SettingsService {
           try {
             final content = await publicFile.readAsString();
             print('SettingsService:   文件内容长度: ${content.length}');
-            print('SettingsService:   文件内容: $content');
             final json = jsonDecode(content) as Map<String, dynamic>;
             _gitConfig = _gitConfigFromJson(json['gitConfig']);
+            // 加载 UI 状态
+            _lastOpenedNotePath = json['lastOpenedNotePath'];
+            _lastOpenedFolderPath = json['lastOpenedFolderPath'];
+            _lastSourceMode = json['lastSourceMode'] ?? false;
             _settingsPath = publicPath;
-            print('SettingsService: 从公共目录加载配置成功: $publicPath');
+            print('SettingsService: 从公共目录加载配置成功');
+            print('SettingsService:   上次打开的笔记: $_lastOpenedNotePath');
+            print('SettingsService:   上次打开的文件夹: $_lastOpenedFolderPath');
+            print('SettingsService:   源码模式: $_lastSourceMode');
             return;
           } catch (e, stack) {
             print('SettingsService: 公共目录读取失败: $e');
@@ -124,8 +129,11 @@ class SettingsService {
           final content = await privateFile.readAsString();
           final json = jsonDecode(content) as Map<String, dynamic>;
           _gitConfig = _gitConfigFromJson(json['gitConfig']);
+          _lastOpenedNotePath = json['lastOpenedNotePath'];
+          _lastOpenedFolderPath = json['lastOpenedFolderPath'];
+          _lastSourceMode = json['lastSourceMode'] ?? false;
           _settingsPath = privatePath;
-          print('SettingsService: 从应用私有目录加载配置成功: $privatePath');
+          print('SettingsService: 从应用私有目录加载配置成功');
           return;
         } catch (e, stack) {
           print('SettingsService: 应用私有目录读取失败: $e');
@@ -133,7 +141,6 @@ class SettingsService {
         }
       }
 
-      // 没有找到设置文件
       print('SettingsService: 未找到配置文件');
       _gitConfig = null;
       _settingsPath = null;
@@ -146,17 +153,18 @@ class SettingsService {
   }
 
   /// 保存设置
-  ///
-  /// Android: 优先尝试公共目录，失败则降级到应用私有目录
   Future<void> saveSettings() async {
     try {
       final json = <String, dynamic>{};
       if (_gitConfig != null) {
         json['gitConfig'] = _gitConfigToJson(_gitConfig!);
       }
+      // 保存 UI 状态
+      json['lastOpenedNotePath'] = _lastOpenedNotePath;
+      json['lastOpenedFolderPath'] = _lastOpenedFolderPath;
+      json['lastSourceMode'] = _lastSourceMode;
       final jsonStr = jsonEncode(json);
 
-      // Android: 优先尝试公共目录
       if (Platform.isAndroid) {
         try {
           final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
@@ -167,20 +175,19 @@ class SettingsService {
           final publicFile = File(publicPath);
           await publicFile.writeAsString(jsonStr);
           _settingsPath = publicPath;
-          print('SettingsService: 配置已保存到公共目录: $publicPath');
+          print('SettingsService: 配置已保存到公共目录');
           return;
         } catch (e) {
           print('SettingsService: 公共目录保存失败: $e，尝试应用私有目录');
         }
       }
 
-      // 降级到应用私有目录
       final appDir = await getApplicationDocumentsDirectory();
       final privatePath = p.join(appDir.path, _settingsFileName);
       final privateFile = File(privatePath);
       await privateFile.writeAsString(jsonStr);
       _settingsPath = privatePath;
-      print('SettingsService: 配置已保存到应用私有目录: $privatePath');
+      print('SettingsService: 配置已保存到应用私有目录');
     } catch (e) {
       print('SettingsService: saveSettings 失败: $e');
     }
@@ -195,6 +202,18 @@ class SettingsService {
   /// 清除 Git 配置
   Future<void> clearGitConfig() async {
     _gitConfig = null;
+    await saveSettings();
+  }
+
+  /// 保存 UI 状态（当前打开的笔记、文件夹、源码模式）
+  Future<void> saveUiState({
+    String? notePath,
+    String? folderPath,
+    bool? sourceMode,
+  }) async {
+    if (notePath != null) _lastOpenedNotePath = notePath;
+    if (folderPath != null) _lastOpenedFolderPath = folderPath;
+    if (sourceMode != null) _lastSourceMode = sourceMode;
     await saveSettings();
   }
 

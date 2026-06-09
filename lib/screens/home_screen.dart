@@ -43,6 +43,44 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_debugLogs.length > 100) _debugLogs.removeAt(0);
   }
 
+  /// 恢复上次打开的文件夹和笔记
+  void _restoreLastOpenedState() {
+    // 恢复文件夹
+    final folderPath = _settingsService.lastOpenedFolderPath;
+    if (folderPath != null && folderPath.isNotEmpty) {
+      _notesBloc.add(LoadNotes(folderPath: folderPath));
+      _log('恢复上次打开的文件夹: $folderPath');
+    }
+
+    // 恢复笔记（延迟一点，等笔记列表加载完）
+    final notePath = _settingsService.lastOpenedNotePath;
+    if (notePath != null && notePath.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        final state = _notesBloc.state;
+        if (state is NotesLoaded) {
+          final note = state.notes.where((n) => n.filePath == notePath).firstOrNull;
+          if (note != null) {
+            _notesBloc.add(SelectNote(note));
+            _log('恢复上次打开的笔记: ${note.title}');
+          }
+        }
+      });
+    }
+  }
+
+  /// 保存当前 UI 状态到配置文件
+  Future<void> _saveCurrentUiState() async {
+    final state = _notesBloc.state;
+    if (state is NotesLoaded) {
+      await _settingsService.saveUiState(
+        notePath: state.selectedNote?.filePath,
+        folderPath: state.currentFolderPath,
+        sourceMode: _isSourceMode,
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -127,10 +165,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _isInitialized = true;
+        // 恢复上次的状态
+        _isSourceMode = _settingsService.lastSourceMode;
       });
 
       _notesBloc.add(const LoadNotes());
       _log('初始化完成，已发送 LoadNotes 事件');
+
+      // 恢复上次打开的文件夹和笔记
+      _restoreLastOpenedState();
     } catch (e, stack) {
       _log('❌ _initServices 异常: $e');
       _log('堆栈: $stack');
@@ -229,9 +272,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         selectedNote: state.selectedNote,
                         onFolderSelected: (folder) {
                           _notesBloc.add(LoadNotes(folderPath: folder?.path));
+                          _saveCurrentUiState();
                         },
                         onNoteSelected: (note) {
                           _notesBloc.add(SelectNote(note));
+                          _saveCurrentUiState();
                         },
                         onCreateNote: () => _showCreateNoteDialog(context, state),
                         onOpenSettings: () => _openSettings(context),
@@ -295,6 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 setState(() {
                   _isSourceMode = value;
                 });
+                _saveCurrentUiState();
               },
             ),
           ),
@@ -396,6 +442,7 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() {
                 _isSourceMode = !_isSourceMode;
               });
+              _saveCurrentUiState();
             },
             icon: Icon(
               _isSourceMode ? Icons.visibility : Icons.code,

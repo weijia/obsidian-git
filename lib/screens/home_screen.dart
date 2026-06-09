@@ -56,8 +56,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initServices() async {
     try {
-      // 加载设置
       _log('开始初始化...');
+
+      // Android: 检查并请求存储权限
+      if (Platform.isAndroid) {
+        await _requestStoragePermissionIfNeeded();
+      }
+
+      // 加载设置
       await _settingsService.loadSettings();
 
       final config = _settingsService.gitConfig;
@@ -686,6 +692,91 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 显示调试日志弹窗
+  /// Android: 检查并请求存储权限
+  ///
+  /// Android 11+ 的 MANAGE_EXTERNAL_STORAGE 权限需要跳转到系统设置页面。
+  /// 如果没有权限，弹出对话框引导用户去设置页面开启。
+  Future<void> _requestStoragePermissionIfNeeded() async {
+    final hasAccess = await _settingsService.hasPublicDocumentsAccess();
+    _log('存储权限检查: ${hasAccess ? "已授权" : "未授权"}');
+
+    if (!hasAccess) {
+      _log('需要请求存储权限，弹出权限请求对话框');
+      _showStoragePermissionDialog();
+    }
+  }
+
+  /// 显示存储权限请求对话框
+  void _showStoragePermissionDialog() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.folder, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('需要存储权限'),
+            ],
+          ),
+          content: const Text(
+            '为了在重新安装 App 后保留配置，\n'
+            '需要访问公共 Documents 目录。\n\n'
+            '点击"前往设置"后，请在权限页面\n'
+            '开启"所有文件访问权限"。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _log('用户拒绝了存储权限');
+              },
+              child: const Text('稍后再说'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                _log('用户同意前往设置页面');
+                await _openStoragePermissionSettings();
+              },
+              child: const Text('前往设置'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  /// 打开 Android 存储权限设置页面
+  Future<void> _openStoragePermissionSettings() async {
+    try {
+      // 使用 Android Intent 打开"所有文件访问权限"设置页面
+      await Process.run('am', [
+        'start',
+        '-a',
+        'android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION',
+        '--pkg',
+        'com.obsidiangit.obsidian_git',  // 包名需要匹配
+      ]);
+    } catch (e) {
+      _log('打开设置页面失败: $e');
+      // 降级：打开应用详情页
+      try {
+        await Process.run('am', [
+          'start',
+          '-a',
+          'android.settings.APPLICATION_DETAILS_SETTINGS',
+          '--pkg',
+          'com.obsidiangit.obsidian_git',
+        ]);
+      } catch (e2) {
+        _log('打开应用详情页也失败: $e2');
+      }
+    }
+  }
+
   void _showDebugLog() {
     showDialog(
       context: context,

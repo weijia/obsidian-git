@@ -31,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _initError;
   bool _isSourceMode = false; // 源码模式状态
   bool _hasRestoredNote = false; // 是否已恢复过笔记（防止重复）
+  bool _needsStoragePermission = false; // 是否需要请求存储权限
 
   // 调试日志（显示在界面上，不需要 adb）
   final List<String> _debugLogs = [];
@@ -280,6 +281,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+    }
+
+    // 初始化完成后，如果需要请求存储权限，弹对话框
+    if (_needsStoragePermission) {
+      _needsStoragePermission = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showStoragePermissionDialog();
+      });
     }
 
     return BlocProvider.value(
@@ -814,8 +823,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _log('存储权限检查: ${hasPermission == true ? "已授权" : "未授权"}');
 
       if (hasPermission != true) {
-        _log('需要请求存储权限，弹出权限请求对话框');
-        _showStoragePermissionDialog();
+        _log('需要请求存储权限，设置标志位');
+        _needsStoragePermission = true;
       }
     } catch (e) {
       _log('检查存储权限失败: $e');
@@ -823,7 +832,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final hasAccess = await _settingsService.hasPublicDocumentsAccess();
       _log('降级检查: ${hasAccess ? "已授权" : "未授权"}');
       if (!hasAccess) {
-        _showStoragePermissionDialog();
+        _needsStoragePermission = true;
       }
     }
   }

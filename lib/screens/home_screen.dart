@@ -99,6 +99,10 @@ class _HomeScreenState extends State<HomeScreen> {
         sourceMode: _isSourceMode,
       );
       _log('    保存完成');
+      // 立即验证：重新加载确认保存成功
+      await _settingsService.loadSettings();
+      _log('    验证: lastOpenedNotePath=${_settingsService.lastOpenedNotePath}');
+      _log('    验证: lastOpenedFolderPath=${_settingsService.lastOpenedFolderPath}');
     } else {
       _log('    状态不是 NotesLoaded，跳过保存');
     }
@@ -126,7 +130,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       // 加载设置
+      _log('调用 loadSettings()...');
       await _settingsService.loadSettings();
+      _log('loadSettings() 返回');
 
       final config = _settingsService.gitConfig;
       _log('配置加载结果: ${config != null ? "有配置" : "无配置"}');
@@ -136,6 +142,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _log('  branch: ${config.branch}');
         _log('  email: ${config.email}');
       }
+
+      // 显示 UI 状态（无论 Git 配置是否存在）
+      _log('UI 状态加载结果:');
+      _log('  lastOpenedNotePath: ${_settingsService.lastOpenedNotePath}');
+      _log('  lastOpenedFolderPath: ${_settingsService.lastOpenedFolderPath}');
+      _log('  lastSourceMode: ${_settingsService.lastSourceMode}');
 
       // 确定存储路径
       String? storagePath;

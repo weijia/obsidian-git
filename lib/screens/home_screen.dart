@@ -310,6 +310,17 @@ class _HomeScreenState extends State<HomeScreen> {
             _log('<<< BlocConsumer listener 结束');
           },
           builder: (context, state) {
+            // BlocConsumer 注册后，如果 Bloc 已经是 NotesLoaded 状态，
+            // listener 不会被触发（因为 previous == current）。
+            // 在这里手动触发恢复。
+            if (state is NotesLoaded && !_hasRestoredNote) {
+              _log('>>> builder 检测到 NotesLoaded 且未恢复，手动触发');
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_hasRestoredNote) {
+                  _restoreLastOpenedNote(state);
+                }
+              });
+            }
             if (state is NotesLoading) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -794,12 +805,26 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Android 11+ 的 MANAGE_EXTERNAL_STORAGE 权限需要跳转到系统设置页面。
   /// 如果没有权限，弹出对话框引导用户去设置页面开启。
   Future<void> _requestStoragePermissionIfNeeded() async {
-    final hasAccess = await _settingsService.hasPublicDocumentsAccess();
-    _log('存储权限检查: ${hasAccess ? "已授权" : "未授权"}');
+    if (!Platform.isAndroid) return;
 
-    if (!hasAccess) {
-      _log('需要请求存储权限，弹出权限请求对话框');
-      _showStoragePermissionDialog();
+    // 使用原生方法检查 MANAGE_EXTERNAL_STORAGE 权限
+    const platform = MethodChannel('com.obsidiangit.obsidian_git/permissions');
+    try {
+      final hasPermission = await platform.invokeMethod<bool>('checkStoragePermission');
+      _log('存储权限检查: ${hasPermission == true ? "已授权" : "未授权"}');
+
+      if (hasPermission != true) {
+        _log('需要请求存储权限，弹出权限请求对话框');
+        _showStoragePermissionDialog();
+      }
+    } catch (e) {
+      _log('检查存储权限失败: $e');
+      // 降级：用文件写入测试
+      final hasAccess = await _settingsService.hasPublicDocumentsAccess();
+      _log('降级检查: ${hasAccess ? "已授权" : "未授权"}');
+      if (!hasAccess) {
+        _showStoragePermissionDialog();
+      }
     }
   }
 

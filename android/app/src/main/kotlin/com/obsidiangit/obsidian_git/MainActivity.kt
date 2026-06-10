@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,6 +18,9 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "checkStoragePermission" -> {
+                    result.success(checkStoragePermission())
+                }
                 "openStoragePermissionSettings" -> {
                     openStoragePermissionSettings()
                     result.success(null)
@@ -29,6 +33,22 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        }
+    }
+
+    /// 检查是否有足够的存储权限
+    /// Android 11+ 需要 MANAGE_EXTERNAL_STORAGE（所有文件访问权限）
+    /// Android 10 及以下需要 WRITE_EXTERNAL_STORAGE
+    private fun checkStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            @Suppress("DEPRECATION")
+            val write = android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                    checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            val read = android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                    checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            write && read
         }
     }
 

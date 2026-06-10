@@ -222,14 +222,21 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('正在初始化...'),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('正在初始化...'),
+              const SizedBox(height: 16),
+              TextButton.icon(
+                icon: const Icon(Icons.bug_report, size: 16),
+                label: const Text('调试日志', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(foregroundColor: Colors.orange),
+                onPressed: () => _showDebugLog(),
+              ),
             ],
           ),
         ),
@@ -452,6 +459,13 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () => _openSettings(context),
             ),
           ],
+          const SizedBox(height: 16),
+          TextButton.icon(
+            icon: const Icon(Icons.bug_report, size: 16),
+            label: const Text('调试日志', style: TextStyle(fontSize: 12)),
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            onPressed: () => _showDebugLog(),
+          ),
         ],
       ),
     );

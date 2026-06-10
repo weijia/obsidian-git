@@ -325,7 +325,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return const Center(child: Text('初始化中...'));
           },
-        ),
         ), // BlocConsumer
         ), // SafeArea
         // 浮动按钮 - 切换侧边栏

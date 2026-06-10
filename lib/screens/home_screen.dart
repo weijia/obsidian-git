@@ -46,36 +46,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 在笔记列表加载完成后恢复上次打开的笔记和源码模式
   void _restoreLastOpenedNote(NotesLoaded state) {
-    if (_hasRestoredNote) return;
+    _log('>>> _restoreLastOpenedNote 被调用');
+    _log('    _hasRestoredNote=$_hasRestoredNote');
+    if (_hasRestoredNote) {
+      _log('    已恢复过，跳过');
+      return;
+    }
+    
+    // 先设置标志，防止重复调用
+    _hasRestoredNote = true;
+    _log('    设置 _hasRestoredNote=true');
+    
     // 恢复源码模式
     final savedSourceMode = _settingsService.lastSourceMode;
+    _log('    savedSourceMode=$savedSourceMode, _isSourceMode=$_isSourceMode');
     if (savedSourceMode != _isSourceMode) {
       setState(() => _isSourceMode = savedSourceMode);
+      _log('    已恢复源码模式: $savedSourceMode');
     }
+    
     // 恢复笔记
     final notePath = _settingsService.lastOpenedNotePath;
+    _log('    lastOpenedNotePath=$notePath');
+    _log('    当前笔记数量: ${state.notes.length}');
     if (notePath != null && notePath.isNotEmpty) {
       final note = state.notes.where((n) => n.filePath == notePath).firstOrNull;
       if (note != null) {
+        _log('    找到笔记: ${note.title}, 发送 SelectNote');
         _notesBloc.add(SelectNote(note));
-        _log('恢复上次打开的笔记: ${note.title}');
       } else {
-        _log('上次打开的笔记已不存在: $notePath');
+        _log('    ❌ 上次打开的笔记已不存在: $notePath');
+        _log('    可用笔记路径:');
+        for (final n in state.notes.take(5)) {
+          _log('      - ${n.filePath}');
+        }
       }
+    } else {
+      _log('    无保存的笔记路径，跳过恢复笔记');
     }
-    _hasRestoredNote = true;
+    _log('<<< _restoreLastOpenedNote 结束');
   }
 
   /// 保存当前 UI 状态到配置文件
   Future<void> _saveCurrentUiState() async {
+    _log('>>> _saveCurrentUiState 被调用');
     final state = _notesBloc.state;
     if (state is NotesLoaded) {
+      _log('    保存: notePath=${state.selectedNote?.filePath}, folderPath=${state.currentFolderPath}, sourceMode=$_isSourceMode');
       await _settingsService.saveUiState(
         notePath: state.selectedNote?.filePath,
         folderPath: state.currentFolderPath,
         sourceMode: _isSourceMode,
       );
+      _log('    保存完成');
+    } else {
+      _log('    状态不是 NotesLoaded，跳过保存');
     }
+    _log('<<< _saveCurrentUiState 结束');
   }
 
   @override
@@ -168,12 +195,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // 恢复上次打开的文件夹（如果有），否则加载全部
       final folderPath = _settingsService.lastOpenedFolderPath;
+      final notePath = _settingsService.lastOpenedNotePath;
+      final sourceMode = _settingsService.lastSourceMode;
+      _log('>>> 准备恢复 UI 状态');
+      _log('    lastOpenedFolderPath=$folderPath');
+      _log('    lastOpenedNotePath=$notePath');
+      _log('    lastSourceMode=$sourceMode');
+      _log('    _hasRestoredNote=$_hasRestoredNote');
       if (folderPath != null && folderPath.isNotEmpty) {
         _notesBloc.add(LoadNotes(folderPath: folderPath));
-        _log('初始化完成，已发送 LoadNotes(folderPath: $folderPath)');
+        _log('    已发送 LoadNotes(folderPath: $folderPath)');
       } else {
         _notesBloc.add(const LoadNotes());
-        _log('初始化完成，已发送 LoadNotes()');
+        _log('    已发送 LoadNotes()');
       }
     } catch (e, stack) {
       _log('❌ _initServices 异常: $e');
@@ -241,13 +275,19 @@ class _HomeScreenState extends State<HomeScreen> {
                    previous.currentFolderPath != current.currentFolderPath;
           },
           listener: (context, state) {
+            _log('>>> BlocConsumer listener 被调用');
+            _log('    state=${state.runtimeType}, _hasRestoredNote=$_hasRestoredNote');
             if (state is NotesLoaded) {
+              _log('    笔记数量: ${state.notes.length}, 选中笔记: ${state.selectedNote?.title ?? "null"}');
               if (!_hasRestoredNote) {
+                _log('    调用 _restoreLastOpenedNote');
                 _restoreLastOpenedNote(state);
               } else {
+                _log('    调用 _saveCurrentUiState');
                 _saveCurrentUiState();
               }
             }
+            _log('<<< BlocConsumer listener 结束');
           },
           builder: (context, state) {
             if (state is NotesLoading) {

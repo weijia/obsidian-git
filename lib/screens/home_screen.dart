@@ -334,7 +334,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ), // BlocBuilder
         ), // BlocListener
         ), // SafeArea
-        ),
         // 浮动按钮 - 切换侧边栏
         floatingActionButton: FloatingActionButton.small(
           onPressed: () => setState(() => _sidebarVisible = !_sidebarVisible),

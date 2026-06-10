@@ -44,18 +44,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_debugLogs.length > 100) _debugLogs.removeAt(0);
   }
 
-  /// 恢复上次打开的文件夹
-  void _restoreLastOpenedState() {
-    final folderPath = _settingsService.lastOpenedFolderPath;
-    if (folderPath != null && folderPath.isNotEmpty) {
-      _notesBloc.add(LoadNotes(folderPath: folderPath));
-      _log('恢复上次打开的文件夹: $folderPath');
-    }
-  }
-
-  /// 在笔记列表加载完成后恢复上次打开的笔记
+  /// 在笔记列表加载完成后恢复上次打开的笔记和源码模式
   void _restoreLastOpenedNote(NotesLoaded state) {
     if (_hasRestoredNote) return;
+    // 恢复源码模式
+    final savedSourceMode = _settingsService.lastSourceMode;
+    if (savedSourceMode != _isSourceMode) {
+      setState(() => _isSourceMode = savedSourceMode);
+    }
+    // 恢复笔记
     final notePath = _settingsService.lastOpenedNotePath;
     if (notePath != null && notePath.isNotEmpty) {
       final note = state.notes.where((n) => n.filePath == notePath).firstOrNull;
@@ -169,11 +166,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _isSourceMode = _settingsService.lastSourceMode;
       });
 
-      _notesBloc.add(const LoadNotes());
-      _log('初始化完成，已发送 LoadNotes 事件');
-
-      // 恢复上次打开的文件夹和笔记
-      _restoreLastOpenedState();
+      // 恢复上次打开的文件夹（如果有），否则加载全部
+      final folderPath = _settingsService.lastOpenedFolderPath;
+      if (folderPath != null && folderPath.isNotEmpty) {
+        _notesBloc.add(LoadNotes(folderPath: folderPath));
+        _log('初始化完成，已发送 LoadNotes(folderPath: $folderPath)');
+      } else {
+        _notesBloc.add(const LoadNotes());
+        _log('初始化完成，已发送 LoadNotes()');
+      }
     } catch (e, stack) {
       _log('❌ _initServices 异常: $e');
       _log('堆栈: $stack');

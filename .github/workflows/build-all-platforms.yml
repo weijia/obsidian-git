@@ -6,6 +6,9 @@ on:
       - '**'
     tags-ignore:
       - '**'
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       platforms:

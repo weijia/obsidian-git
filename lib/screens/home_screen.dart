@@ -44,19 +44,18 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_debugLogs.length > 100) _debugLogs.removeAt(0);
   }
 
-  /// 恢复上次打开的文件夹和笔记
+  /// 恢复上次打开的文件夹
   void _restoreLastOpenedState() {
-    // 恢复文件夹（立即发送事件）
     final folderPath = _settingsService.lastOpenedFolderPath;
     if (folderPath != null && folderPath.isNotEmpty) {
       _notesBloc.add(LoadNotes(folderPath: folderPath));
       _log('恢复上次打开的文件夹: $folderPath');
     }
-    // 笔记恢复由 BlocListener 在 NotesLoaded 后自动处理
   }
 
-  /// 在 Bloc 状态变为 NotesLoaded 后恢复上次打开的笔记
+  /// 在笔记列表加载完成后恢复上次打开的笔记
   void _restoreLastOpenedNote(NotesLoaded state) {
+    if (_hasRestoredNote) return;
     final notePath = _settingsService.lastOpenedNotePath;
     if (notePath != null && notePath.isNotEmpty) {
       final note = state.notes.where((n) => n.filePath == notePath).firstOrNull;
@@ -67,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _log('上次打开的笔记已不存在: $notePath');
       }
     }
+    _hasRestoredNote = true;
   }
 
   /// 保存当前 UI 状态到配置文件
@@ -231,10 +231,9 @@ class _HomeScreenState extends State<HomeScreen> {
       value: _notesBloc,
       child: Scaffold(
         body: SafeArea(
-          child: BlocListener<NotesBloc, NotesState>(
+          child: BlocConsumer<NotesBloc, NotesState>(
           listenWhen: (previous, current) {
-            // 1. 从非 NotesLoaded 变为 NotesLoaded 时触发恢复
-            // 2. NotesLoaded 状态下 selectedNote 变化时自动保存
+            // 只在 NotesLoaded 且笔记列表变化时触发
             if (current is! NotesLoaded) return false;
             if (previous is! NotesLoaded) return true;
             return previous.selectedNote?.filePath != current.selectedNote?.filePath ||
@@ -243,16 +242,12 @@ class _HomeScreenState extends State<HomeScreen> {
           listener: (context, state) {
             if (state is NotesLoaded) {
               if (!_hasRestoredNote) {
-                // 首次加载时恢复笔记
                 _restoreLastOpenedNote(state);
-                _hasRestoredNote = true;
               } else {
-                // 后续 selectedNote 或 folder 变化时自动保存
                 _saveCurrentUiState();
               }
             }
           },
-          child: BlocBuilder<NotesBloc, NotesState>(
           builder: (context, state) {
             if (state is NotesLoading) {
               return const Center(child: CircularProgressIndicator());
@@ -297,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                         onNoteSelected: (note) {
                           _notesBloc.add(SelectNote(note));
-                          // 不在这里保存，由 BlocListener 在状态更新后自动保存
+                          // 保存由 BlocConsumer listener 自动处理
                         },
                         onCreateNote: () => _showCreateNoteDialog(context, state),
                         onOpenSettings: () => _openSettings(context),
@@ -331,8 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
             return const Center(child: Text('初始化中...'));
           },
         ),
-        ), // BlocBuilder
-        ), // BlocListener
+        ), // BlocConsumer
         ), // SafeArea
         // 浮动按钮 - 切换侧边栏
         floatingActionButton: FloatingActionButton.small(
@@ -945,3 +939,4 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 }
+

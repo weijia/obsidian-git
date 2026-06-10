@@ -54,6 +54,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _settingsService.loadSettings();
     final config = _settingsService.gitConfig;
 
+    // 如果 SettingsService 中没有，兼容从 SharedPreferences 加载旧数据
+    SharedPreferences? oldPrefs;
+    if (config == null) {
+      oldPrefs = await SharedPreferences.getInstance();
+    }
+
     setState(() {
       if (config != null) {
         _authMethod = config.authMethod;
@@ -68,24 +74,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _sshKeyPath = config.sshKeyPath;
         _sshPublicKey = config.sshPublicKey;
         _sshKeyPassword = config.sshKeyPassword;
-      } else {
-        // 配置文件中没有，兼容从 SharedPreferences 加载旧数据
-        final prefs = await SharedPreferences.getInstance();
+      } else if (oldPrefs != null) {
+        // 兼容从 SharedPreferences 加载旧数据
         _authMethod = AuthMethod.values.firstWhere(
-          (e) => e.name == prefs.getString('git_auth_method'),
+          (e) => e.name == oldPrefs!.getString('git_auth_method'),
           orElse: () => AuthMethod.https,
         );
         _config = GitConfig(
-          repoUrl: prefs.getString('git_repo_url') ?? '',
-          branch: prefs.getString('git_branch') ?? 'main',
-          localPath: prefs.getString('git_local_path') ?? '',
-          username: prefs.getString('git_username'),
-          email: prefs.getString('git_email'),
-          httpsToken: prefs.getString('git_https_token'),
+          repoUrl: oldPrefs.getString('git_repo_url') ?? '',
+          branch: oldPrefs.getString('git_branch') ?? 'main',
+          localPath: oldPrefs.getString('git_local_path') ?? '',
+          username: oldPrefs.getString('git_username'),
+          email: oldPrefs.getString('git_email'),
+          httpsToken: oldPrefs.getString('git_https_token'),
           authMethod: _authMethod,
-          autoSync: prefs.getBool('git_auto_sync') ?? false,
+          autoSync: oldPrefs.getBool('git_auto_sync') ?? false,
           syncFrequency: SyncFrequency.values.firstWhere(
-            (e) => e.name == prefs.getString('git_sync_frequency'),
+            (e) => e.name == oldPrefs!.getString('git_sync_frequency'),
             orElse: () => SyncFrequency.manual,
           ),
         );
@@ -96,9 +101,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _httpsTokenController.text = _config?.httpsToken ?? '';
         _autoSync = _config?.autoSync ?? false;
         _syncFrequency = _config?.syncFrequency ?? SyncFrequency.manual;
-        _sshKeyPath = prefs.getString('git_ssh_key_path');
-        _sshPublicKey = prefs.getString('git_ssh_public_key');
-        _sshKeyPassword = prefs.getString('git_ssh_key_password');
+        _sshKeyPath = oldPrefs.getString('git_ssh_key_path');
+        _sshPublicKey = oldPrefs.getString('git_ssh_public_key');
+        _sshKeyPassword = oldPrefs.getString('git_ssh_key_password');
       }
       _isLoading = false;
     });

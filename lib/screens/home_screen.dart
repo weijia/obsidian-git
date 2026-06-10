@@ -99,10 +99,6 @@ class _HomeScreenState extends State<HomeScreen> {
         sourceMode: _isSourceMode,
       );
       _log('    保存完成');
-      // 立即验证：重新加载确认保存成功
-      await _settingsService.loadSettings();
-      _log('    验证: lastOpenedNotePath=${_settingsService.lastOpenedNotePath}');
-      _log('    验证: lastOpenedFolderPath=${_settingsService.lastOpenedFolderPath}');
     } else {
       _log('    状态不是 NotesLoaded，跳过保存');
     }
@@ -117,6 +113,11 @@ class _HomeScreenState extends State<HomeScreen> {
       gitService: _gitService,
       settingsService: _settingsService,
     );
+    // 连接 SettingsService 日志到调试面板
+    _settingsService.onLog = (message) {
+      _debugLogs.add(message);
+      if (_debugLogs.length > 100) _debugLogs.removeAt(0);
+    };
     _initServices();
   }
 

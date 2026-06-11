@@ -230,11 +230,93 @@ class Sidebar extends StatelessWidget {
               const PopupMenuItem(value: 'delete', child: Text('删除')),
             ],
             onSelected: (value) {
-              // TODO: 实现操作
+              if (value == 'delete') {
+                _confirmDelete(context, note);
+              } else if (value == 'rename') {
+                _showRenameDialog(context, note);
+              } else if (value == 'move') {
+                _showMoveDialog(context, note);
+              }
             },
           ),
         );
       },
+    );
+  }
+
+  /// 确认删除笔记
+  void _confirmDelete(BuildContext context, Note note) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除笔记'),
+        content: Text('确定要删除 "${note.title}" 吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              context.read<NotesBloc>().add(DeleteNote(note.filePath));
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示重命名对话框
+  void _showRenameDialog(BuildContext context, Note note) {
+    final controller = TextEditingController(text: note.title);
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重命名笔记'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '笔记名称',
+            hintText: '输入新的笔记名称',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newTitle = controller.text.trim();
+              if (newTitle.isNotEmpty && newTitle != note.title) {
+                Navigator.pop(dialogContext);
+                context.read<NotesBloc>().add(RenameNote(note.filePath, newTitle));
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示移动对话框
+  void _showMoveDialog(BuildContext context, Note note) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('移动笔记'),
+        content: const Text('选择目标文件夹（功能待实现）'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
     );
   }
 

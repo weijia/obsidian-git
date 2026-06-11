@@ -31,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _initError;
   bool _isSourceMode = false; // 源码模式状态
   bool _hasRestoredNote = false; // 是否已恢复过笔记（防止重复）
+  bool _needsSafDirectory = false; // 是否需要请求 SAF 目录
 
   // 调试日志（显示在界面上，不需要 adb）
   final List<String> _debugLogs = [];
@@ -128,10 +129,17 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       _log('开始初始化...');
 
-      // 加载设置（使用 shared_preferences，不需要权限）
+      // 加载设置
       _log('调用 loadSettings()...');
       await _settingsService.loadSettings();
       _log('loadSettings() 返回');
+
+      // 检查 SAF 目录是否配置
+      if (!_settingsService.hasSafDirectory && Platform.isAndroid) {
+        _log('SAF 目录未配置，提示用户选择');
+        // 设置标志位，等 UI 稳定后弹对话框
+        _needsSafDirectory = true;
+      }
 
       final config = _settingsService.gitConfig;
       _log('配置加载结果: ${config != null ? "有配置" : "无配置"}');
@@ -278,6 +286,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+    }
+
+    // 初始化完成后，如果需要 SAF 目录，弹对话框
+    if (_needsSafDirectory) {
+      _needsSafDirectory = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showSafDirectoryDialog();
+      });
     }
 
     return BlocProvider.value(
@@ -844,6 +860,67 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  /// 显示 SAF 目录选择对话框
+  void _showSafDirectoryDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.folder, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('选择存储目录'),
+          ],
+        ),
+        content: const Text(
+          '为了在卸载 App 后保留配置和笔记，\n'
+          '请选择一个公共存储目录。\n\n'
+          '推荐选择 Documents/ObsidianGit/\n'
+          '或创建一个新目录。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _log('用户跳过 SAF 目录选择');
+              // 继续使用 shared_preferences
+              _continueInit();
+            },
+            child: const Text('稍后再说'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              _log('用户选择 SAF 目录');
+              final success = await _settingsService.requestSafDirectory();
+              if (success) {
+                _log('SAF 目录选择成功: ${_settingsService.safDirectoryUri}');
+                // 重新加载配置
+                await _settingsService.loadSettings();
+              } else {
+                _log('SAF 目录选择失败');
+              }
+              _continueInit();
+            },
+            child: const Text('选择目录'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 继续初始化流程（SAF 选择后或跳过后）
+  void _continueInit() {
+    // 触发重新加载笔记列表
+    final config = _settingsService.gitConfig;
+    if (config != null && config.localPath.isNotEmpty) {
+      _notesBloc.add(LoadNotes(folderPath: config.localPath));
+    } else {
+      _notesBloc.add(const LoadNotes());
+    }
   }
 
   void _openSettings(BuildContext context) {

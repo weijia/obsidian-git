@@ -119,7 +119,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _debugLogs.add(message);
       if (_debugLogs.length > 100) _debugLogs.removeAt(0);
     };
-    _initServices();
+    // 延迟到第一帧渲染后再执行异步初始化，避免阻塞 UI 线程
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initServices();
+    });
   }
 
   Future<void> _initServices() async {

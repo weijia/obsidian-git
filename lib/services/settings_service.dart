@@ -86,7 +86,8 @@ class SettingsService {
         (doc) => doc.name == _settingsFileName,
         orElse: () => throw Exception('配置文件不存在'),
       );
-      final bytes = await settingsFile.readBytes();
+      final bytes = await settingsFile.read();
+      if (bytes == null) return null;
       return utf8.decode(bytes);
     } catch (e) {
       _log('读取 SAF 配置失败: $e');
@@ -215,10 +216,16 @@ class SettingsService {
     if (_safDir == null) return;
 
     final bytes = utf8.encode(content);
-    await _safDir!.saveBytes(
-      bytes: bytes,
-      mimeType: 'application/json',
+    // 先查找是否存在配置文件
+    final existingFile = await _safDir!.find(_settingsFileName);
+    if (existingFile != null) {
+      // 存在则删除后重新创建
+      await existingFile.delete();
+    }
+    // 创建新文件
+    await _safDir!.createFile(
       name: _settingsFileName,
+      bytes: bytes,
     );
   }
 

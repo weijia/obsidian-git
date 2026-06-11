@@ -293,7 +293,10 @@ class Sidebar extends StatelessWidget {
               final newTitle = controller.text.trim();
               if (newTitle.isNotEmpty && newTitle != note.title) {
                 Navigator.pop(dialogContext);
-                context.read<NotesBloc>().add(RenameNote(note.filePath, newTitle));
+                // TODO: 添加 RenameNote 事件到 NotesBloc
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('重命名功能待实现')),
+                );
               }
             },
             child: const Text('确定'),

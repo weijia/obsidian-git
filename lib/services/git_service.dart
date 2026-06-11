@@ -324,20 +324,25 @@ class GitService {
     if (!repo.isEmpty) {
       final remoteRef = 'refs/remotes/$remoteName/${config.branch}';
 
-      // 使用 RevParse 将引用名解析为 Commit
-      final revParse = git2.RevParse.single(
-        repo: repo,
-        spec: remoteRef,
-      );
-
-      if (revParse is git2.Commit) {
-        // 使用 AnnotatedCommit 进行合并
-        final annotatedCommit = git2.AnnotatedCommit.lookup(repo: repo, oid: revParse.oid);
-        git2.Merge.commit(
+      try {
+        // 使用 RevParse 将引用名解析为 Commit
+        final revParse = git2.RevParse.single(
           repo: repo,
-          commit: annotatedCommit,
+          spec: remoteRef,
         );
-        annotatedCommit.free();
+
+        if (revParse is git2.Commit) {
+          // 使用 AnnotatedCommit 进行合并
+          final annotatedCommit = git2.AnnotatedCommit.lookup(repo: repo, oid: revParse.oid);
+          git2.Merge.commit(
+            repo: repo,
+            commit: annotatedCommit,
+          );
+          annotatedCommit.free();
+        }
+      } catch (e) {
+        // 远程引用不存在（可能是新仓库或空仓库），跳过合并
+        print('远程引用 $remoteRef 不存在，跳过合并: $e');
       }
     }
 

@@ -38,6 +38,9 @@ dependencies:
   # 文件选择
   file_picker: ^10.2.0
 
+  # Android SAF 文件访问（公共目录）
+  docman: ^1.2.0
+
   # SSH 密钥支持
   pointycastle: ^3.7.4
 

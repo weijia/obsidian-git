@@ -115,6 +115,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       editorState: _editorState,
       editable: !widget.readOnly,
       autoFocus: true,
+      enableSelectionToolbar: true,
       editorStyle: EditorStyle.desktop(
         padding: const EdgeInsets.all(16),
         cursorColor: colorScheme.primary,

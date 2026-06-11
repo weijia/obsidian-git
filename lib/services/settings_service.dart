@@ -1,234 +1,94 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/git_config.dart';
 
-/// 设置服务
+/// 设置服务 - 使用 shared_preferences 持久化配置
 ///
-/// Android 上配置文件保存到公共 Documents/ObsidianGit/ 目录，
-/// 卸载 App 后配置不会丢失。其他平台使用应用文档目录。
+/// 不需要任何文件权限，底层使用 Android SharedPreferences / iOS NSUserDefaults
 class SettingsService {
   static final SettingsService _instance = SettingsService._internal();
   factory SettingsService() => _instance;
   SettingsService._internal();
 
-  static const _settingsFileName = 'obsidian_git_settings.json';
+  static const _keyGitConfig = 'git_config';
+  static const _keyLastNotePath = 'last_note_path';
+  static const _keyLastFolderPath = 'last_folder_path';
+  static const _keyLastSourceMode = 'last_source_mode';
 
+  SharedPreferences? _prefs;
   GitConfig? _gitConfig;
-  String? _settingsPath;
 
-  // UI 状态
-  String? _lastOpenedNotePath;
-  String? _lastOpenedFolderPath;
-  bool _lastSourceMode = false;
-
-  // 日志回调，用于向外部传递日志
+  // 日志回调
   void Function(String)? onLog;
 
   GitConfig? get gitConfig => _gitConfig;
-  String? get lastOpenedNotePath => _lastOpenedNotePath;
-  String? get lastOpenedFolderPath => _lastOpenedFolderPath;
-  bool get lastSourceMode => _lastSourceMode;
-  String? get settingsPath => _settingsPath;
+  String? get lastOpenedNotePath => _prefs?.getString(_keyLastNotePath);
+  String? get lastOpenedFolderPath => _prefs?.getString(_keyLastFolderPath);
+  bool get lastSourceMode => _prefs?.getBool(_keyLastSourceMode) ?? false;
 
   void _log(String message) {
-    final timestamp = DateTime.now().toString().substring(11, 19);
-    final line = '[$timestamp] [Settings] $message';
+    final line = '[Settings] $message';
     print(line);
     onLog?.call(line);
   }
 
-  /// 检查是否有公共 Documents 目录的访问权限
-  Future<bool> hasPublicDocumentsAccess() async {
-    if (!Platform.isAndroid) return false;
-
-    try {
-      final publicDir = Directory('/storage/emulated/0/Documents/ObsidianGit');
-      if (!await publicDir.exists()) {
-        await publicDir.create(recursive: true);
-      }
-      final testFile = File(p.join(publicDir.path, '.write_test'));
-      await testFile.writeAsString('test');
-      await testFile.delete();
-      return true;
-    } catch (e) {
-      _log('公共 Documents 目录无访问权限: $e');
-      return false;
-    }
-  }
-
-  /// 获取公共目录路径
-  String get _publicDirPath => '/storage/emulated/0/Documents/ObsidianGit';
-
-  /// 获取公共目录配置文件路径
-  String get _publicFilePath => p.join(_publicDirPath, _settingsFileName);
-
-  /// 加载设置
+  /// 初始化并加载设置
   Future<void> loadSettings() async {
-    try {
-      _log('开始加载设置...');
+    _log('初始化 SharedPreferences...');
+    _prefs = await SharedPreferences.getInstance();
+    _log('SharedPreferences 初始化完成');
 
-      if (Platform.isAndroid) {
-        // 1. 尝试公共目录
-        _log('检查公共目录: $_publicFilePath');
-        try {
-          final publicFile = File(_publicFilePath);
-          final fileExists = await publicFile.exists();
-          _log('  文件是否存在: $fileExists');
-
-          if (fileExists) {
-            final content = await publicFile.readAsString();
-            _log('  文件内容长度: ${content.length} 字节');
-            _log('  文件内容预览: ${content.length > 200 ? content.substring(0, 200) : content}');
-            final json = jsonDecode(content) as Map<String, dynamic>;
-            _gitConfig = _gitConfigFromJson(json['gitConfig']);
-            _lastOpenedNotePath = json['lastOpenedNotePath'];
-            _lastOpenedFolderPath = json['lastOpenedFolderPath'];
-            _lastSourceMode = json['lastSourceMode'] ?? false;
-            _settingsPath = _publicFilePath;
-            _log('从公共目录加载成功');
-            _log('  gitConfig: ${_gitConfig != null ? "有" : "无"}');
-            _log('  lastOpenedNotePath: $_lastOpenedNotePath');
-            _log('  lastOpenedFolderPath: $_lastOpenedFolderPath');
-            _log('  lastSourceMode: $_lastSourceMode');
-            return;
-          } else {
-            _log('  公共目录配置文件不存在');
-          }
-        } catch (e, stack) {
-          _log('读取公共目录失败: $e');
-          _log('  堆栈: $stack');
-        }
-      }
-
-      // 2. 尝试应用私有目录
-      final appDir = await getApplicationDocumentsDirectory();
-      final privatePath = p.join(appDir.path, _settingsFileName);
-      _log('检查应用私有目录: $privatePath');
-
+    // 加载 Git 配置
+    final gitConfigJson = _prefs!.getString(_keyGitConfig);
+    if (gitConfigJson != null && gitConfigJson.isNotEmpty) {
       try {
-        final privateFile = File(privatePath);
-        final fileExists = await privateFile.exists();
-        _log('  文件是否存在: $fileExists');
-
-        if (fileExists) {
-          final content = await privateFile.readAsString();
-          _log('  文件内容长度: ${content.length} 字节');
-          final json = jsonDecode(content) as Map<String, dynamic>;
-          _gitConfig = _gitConfigFromJson(json['gitConfig']);
-          _lastOpenedNotePath = json['lastOpenedNotePath'];
-          _lastOpenedFolderPath = json['lastOpenedFolderPath'];
-          _lastSourceMode = json['lastSourceMode'] ?? false;
-          _settingsPath = privatePath;
-          _log('从应用私有目录加载成功');
-          _log('  gitConfig: ${_gitConfig != null ? "有" : "无"}');
-          _log('  lastOpenedNotePath: $_lastOpenedNotePath');
-          _log('  lastOpenedFolderPath: $_lastOpenedFolderPath');
-          _log('  lastSourceMode: $_lastSourceMode');
-          return;
-        } else {
-          _log('  应用私有目录配置文件不存在');
-        }
-      } catch (e, stack) {
-        _log('读取应用私有目录失败: $e');
-        _log('  堆栈: $stack');
+        _gitConfig = _gitConfigFromJson(jsonDecode(gitConfigJson));
+        _log('Git 配置已加载');
+      } catch (e) {
+        _log('Git 配置解析失败: $e');
+        _gitConfig = null;
       }
-
-      // 3. 都没有找到
-      _log('未找到任何配置文件（首次启动）');
+    } else {
+      _log('无 Git 配置');
       _gitConfig = null;
-      _lastOpenedNotePath = null;
-      _lastOpenedFolderPath = null;
-      _lastSourceMode = false;
-      _settingsPath = null;
-    } catch (e, stack) {
-      _log('loadSettings 异常: $e');
-      _log('  堆栈: $stack');
-      _gitConfig = null;
-      _settingsPath = null;
     }
+
+    _log('UI 状态: notePath=$lastOpenedNotePath, folderPath=$lastOpenedFolderPath, sourceMode=$lastSourceMode');
   }
 
-  /// 保存设置
-  Future<void> saveSettings() async {
-    try {
-      final json = <String, dynamic>{};
-      if (_gitConfig != null) {
-        json['gitConfig'] = _gitConfigToJson(_gitConfig!);
-      }
-      // 保存 UI 状态
-      json['lastOpenedNotePath'] = _lastOpenedNotePath;
-      json['lastOpenedFolderPath'] = _lastOpenedFolderPath;
-      json['lastSourceMode'] = _lastSourceMode;
-      final jsonStr = jsonEncode(json);
-      _log('准备保存设置 (${jsonStr.length} 字节)');
-
-      if (Platform.isAndroid) {
-        try {
-          final publicDir = Directory(_publicDirPath);
-          if (!await publicDir.exists()) {
-            await publicDir.create(recursive: true);
-            _log('创建公共目录: ${publicDir.path}');
-          }
-          final publicFile = File(_publicFilePath);
-          await publicFile.writeAsString(jsonStr);
-          _settingsPath = _publicFilePath;
-          _log('已保存到公共目录: $_publicFilePath');
-
-          // 验证写入
-          final verifyContent = await publicFile.readAsString();
-          if (verifyContent == jsonStr) {
-            _log('写入验证通过');
-          } else {
-            _log('写入验证失败！写入内容不匹配');
-          }
-          return;
-        } catch (e) {
-          _log('保存到公共目录失败: $e');
-        }
-      }
-
-      // 回退到应用私有目录
-      final appDir = await getApplicationDocumentsDirectory();
-      final privatePath = p.join(appDir.path, _settingsFileName);
-      final privateFile = File(privatePath);
-      await privateFile.writeAsString(jsonStr);
-      _settingsPath = privatePath;
-      _log('已保存到应用私有目录: $privatePath');
-    } catch (e) {
-      _log('saveSettings 失败: $e');
-    }
-  }
-
-  /// 设置 Git 配置
+  /// 保存 Git 配置
   Future<void> setGitConfig(GitConfig config) async {
     _gitConfig = config;
-    await saveSettings();
+    await _prefs?.setString(_keyGitConfig, jsonEncode(_gitConfigToJson(config)));
+    _log('Git 配置已保存');
   }
 
   /// 清除 Git 配置
   Future<void> clearGitConfig() async {
     _gitConfig = null;
-    await saveSettings();
+    await _prefs?.remove(_keyGitConfig);
+    _log('Git 配置已清除');
   }
 
-  /// 保存 UI 状态（当前打开的笔记、文件夹、源码模式）
+  /// 保存 UI 状态
   Future<void> saveUiState({
     String? notePath,
     String? folderPath,
     bool? sourceMode,
   }) async {
-    if (notePath != null) _lastOpenedNotePath = notePath;
-    if (folderPath != null) _lastOpenedFolderPath = folderPath;
-    if (sourceMode != null) _lastSourceMode = sourceMode;
-    await saveSettings();
+    if (notePath != null) {
+      await _prefs?.setString(_keyLastNotePath, notePath);
+    }
+    if (folderPath != null) {
+      await _prefs?.setString(_keyLastFolderPath, folderPath);
+    }
+    if (sourceMode != null) {
+      await _prefs?.setBool(_keyLastSourceMode, sourceMode);
+    }
+    _log('UI 状态已保存: notePath=$notePath, folderPath=$folderPath, sourceMode=$sourceMode');
   }
 
-  /// 从 JSON 解析 GitConfig
-  GitConfig? _gitConfigFromJson(Map<String, dynamic>? json) {
-    if (json == null) return null;
-
+  GitConfig? _gitConfigFromJson(Map<String, dynamic> json) {
     return GitConfig(
       repoUrl: json['repoUrl'] ?? '',
       branch: json['branch'] ?? 'main',
@@ -259,7 +119,6 @@ class SettingsService {
     );
   }
 
-  /// 将 GitConfig 转换为 JSON
   Map<String, dynamic> _gitConfigToJson(GitConfig config) {
     return {
       'repoUrl': config.repoUrl,

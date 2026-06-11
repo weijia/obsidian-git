@@ -31,7 +31,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _initError;
   bool _isSourceMode = false; // 源码模式状态
   bool _hasRestoredNote = false; // 是否已恢复过笔记（防止重复）
-  bool _needsStoragePermission = false; // 是否需要请求存储权限
 
   // 调试日志（显示在界面上，不需要 adb）
   final List<String> _debugLogs = [];
@@ -129,12 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       _log('开始初始化...');
 
-      // Android: 检查并请求存储权限
-      if (Platform.isAndroid) {
-        await _requestStoragePermissionIfNeeded();
-      }
-
-      // 加载设置
+      // 加载设置（使用 shared_preferences，不需要权限）
       _log('调用 loadSettings()...');
       await _settingsService.loadSettings();
       _log('loadSettings() 返回');
@@ -284,14 +278,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
-    }
-
-    // 初始化完成后，如果需要请求存储权限，弹对话框
-    if (_needsStoragePermission) {
-      _needsStoragePermission = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _showStoragePermissionDialog();
-      });
     }
 
     return BlocProvider.value(
@@ -809,98 +795,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-  }
-
-  /// 显示调试日志弹窗
-  /// Android: 检查并请求存储权限
-  ///
-  /// Android 11+ 的 MANAGE_EXTERNAL_STORAGE 权限需要跳转到系统设置页面。
-  /// 如果没有权限，弹出对话框引导用户去设置页面开启。
-  Future<void> _requestStoragePermissionIfNeeded() async {
-    if (!Platform.isAndroid) return;
-
-    // 使用原生方法检查 MANAGE_EXTERNAL_STORAGE 权限
-    const platform = MethodChannel('com.obsidiangit.obsidian_git/permissions');
-    try {
-      final hasPermission = await platform.invokeMethod<bool>('checkStoragePermission');
-      _log('存储权限检查: ${hasPermission == true ? "已授权" : "未授权"}');
-
-      if (hasPermission != true) {
-        _log('需要请求存储权限，设置标志位');
-        _needsStoragePermission = true;
-      }
-    } catch (e) {
-      _log('检查存储权限失败: $e');
-      // 降级：用文件写入测试
-      final hasAccess = await _settingsService.hasPublicDocumentsAccess();
-      _log('降级检查: ${hasAccess ? "已授权" : "未授权"}');
-      if (!hasAccess) {
-        _needsStoragePermission = true;
-      }
-    }
-  }
-
-  /// 显示存储权限请求对话框
-  void _showStoragePermissionDialog() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.folder, color: Colors.blue),
-              SizedBox(width: 8),
-              Text('需要存储权限'),
-            ],
-          ),
-          content: const Text(
-            '为了在重新安装 App 后保留配置，\n'
-            '需要访问公共 Documents 目录。\n\n'
-            '点击"前往设置"后，请在权限页面\n'
-            '开启"所有文件访问权限"。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _log('用户拒绝了存储权限');
-              },
-              child: const Text('稍后再说'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                _log('用户同意前往设置页面');
-                await _openStoragePermissionSettings();
-              },
-              child: const Text('前往设置'),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  /// 打开 Android 存储权限设置页面
-  Future<void> _openStoragePermissionSettings() async {
-    try {
-      // 使用 MethodChannel 调用原生 Android 代码打开设置页面
-      const platform = MethodChannel('com.obsidiangit.obsidian_git/permissions');
-      await platform.invokeMethod('openStoragePermissionSettings');
-      _log('已请求打开存储权限设置页面');
-    } catch (e) {
-      _log('打开设置页面失败: $e');
-      // 降级：打开应用详情页
-      try {
-        const platform = MethodChannel('com.obsidiangit.obsidian_git/permissions');
-        await platform.invokeMethod('openAppSettings');
-        _log('已请求打开应用设置页面');
-      } catch (e2) {
-        _log('打开应用详情页也失败: $e2');
-      }
-    }
   }
 
   void _showDebugLog() {

@@ -520,6 +520,20 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
+          // 目录选择按钮
+          IconButton(
+            icon: const Icon(Icons.folder_outlined),
+            tooltip: '选择存储目录',
+            onPressed: () async {
+              final success = await _settingsService.requestSafDirectory();
+              if (success) {
+                _log('目录已切换: ${_settingsService.safDirectoryUri}');
+                // 重新加载笔记列表
+                _notesBloc.add(const LoadNotes());
+              }
+            },
+          ),
+          const SizedBox(width: 4),
           Icon(
             Icons.description_outlined,
             color: Theme.of(context).colorScheme.primary,

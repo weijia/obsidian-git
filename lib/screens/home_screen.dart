@@ -2,8 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
 import '../../models/folder.dart';
 import '../../models/note.dart';
 import '../../blocs/notes/notes_bloc.dart';
@@ -522,11 +520,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
-          // 打开文件按钮
+          // 切换侧边栏按钮
           IconButton(
-            icon: const Icon(Icons.folder_open_outlined),
-            tooltip: '打开文件',
-            onPressed: () => _openFileFromRepo(context),
+            icon: Icon(_sidebarVisible ? Icons.menu_open : Icons.menu),
+            tooltip: _sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
+            onPressed: () => setState(() => _sidebarVisible = !_sidebarVisible),
           ),
           const SizedBox(width: 4),
           Icon(
@@ -929,69 +927,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _notesBloc.add(LoadNotes(folderPath: config.localPath));
     } else {
       _notesBloc.add(const LoadNotes());
-    }
-  }
-
-  /// 从 repo 中打开文件
-  void _openFileFromRepo(BuildContext context) async {
-    try {
-      // 获取 repo 路径
-      final config = _settingsService.gitConfig;
-      String? repoPath;
-      if (config != null && config.localPath.isNotEmpty) {
-        repoPath = config.localPath;
-      } else {
-        repoPath = _storageService.basePath;
-      }
-
-      if (repoPath == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先配置 Git 仓库或选择存储目录')),
-        );
-        return;
-      }
-
-      // 使用 FilePicker 选择文件
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: '选择要打开的 Markdown 文件',
-        initialDirectory: repoPath,
-        type: FileType.custom,
-        allowedExtensions: ['md', 'markdown', 'txt'],
-        allowMultiple: false,
-      );
-
-      if (result != null && result.files.isNotEmpty) {
-        final filePath = result.files.first.path;
-        if (filePath != null) {
-          _log('选择文件: $filePath');
-
-          // 读取文件内容
-          final file = File(filePath);
-          if (await file.exists()) {
-            final content = await file.readAsString();
-            final fileName = p.basename(filePath);
-
-            // 创建 Note 对象
-            final note = Note(
-              id: filePath.hashCode.toString(),
-              title: fileName.replaceAll(RegExp(r'\.(md|markdown|txt)$'), ''),
-              content: content,
-              filePath: filePath,
-              createdAt: await file.lastModified(),
-              modifiedAt: await file.lastModified(),
-            );
-
-            // 选中该笔记
-            _notesBloc.add(SelectNote(note));
-            _log('已打开文件: ${note.title}');
-          }
-        }
-      }
-    } catch (e) {
-      _log('打开文件失败: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('打开文件失败: $e')),
-      );
     }
   }
 

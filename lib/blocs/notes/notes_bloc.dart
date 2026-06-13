@@ -237,8 +237,46 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
         selectedNote: note,
         hasUnsyncedChanges: true,
       ));
+
+      // 如果配置了 Git，自动触发 push
+      final config = _settingsService.gitConfig;
+      if (config != null && config.localPath.isNotEmpty) {
+        // 异步执行 Git 操作，不阻塞 UI
+        _autoPushToGit();
+      }
     } catch (e) {
       emit(NotesError(e.toString()));
+    }
+  }
+
+  /// 自动推送到 Git（后台执行）
+  Future<void> _autoPushToGit() async {
+    try {
+      final config = _settingsService.gitConfig;
+      if (config == null || config.localPath.isEmpty) return;
+
+      await _gitService.initialize();
+      
+      // 添加所有更改
+      await _gitService.add(localPath: config.localPath);
+      
+      // 提交
+      await _gitService.commit(
+        localPath: config.localPath,
+        message: '自动提交: ${DateTime.now().toString().substring(0, 19)}',
+        username: config.username,
+        email: config.email,
+      );
+      
+      // 推送
+      await _gitService.push(
+        config: config,
+        localPath: config.localPath,
+      );
+      
+      print('自动推送成功');
+    } catch (e) {
+      print('自动推送失败: $e');
     }
   }
 

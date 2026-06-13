@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSourceMode = false; // 源码模式状态
   bool _hasRestoredNote = false; // 是否已恢复过笔记（防止重复）
   bool _needsSafDirectory = false; // 是否需要请求 SAF 目录
+  bool _showArchived = true; // 显示归档文件（默认显示）
 
   // 调试日志（显示在界面上，不需要 adb）
   final List<String> _debugLogs = [];
@@ -382,6 +383,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                         onCreateNote: () => _showCreateNoteDialog(context, state),
                         onOpenSettings: () => _openSettings(context),
+                        showArchived: _showArchived,
+                        onShowArchivedChanged: (value) {
+                          setState(() {
+                            _showArchived = value;
+                          });
+                        },
                       ),
                     ),
                   // 分隔条

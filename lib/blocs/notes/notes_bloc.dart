@@ -77,6 +77,22 @@ class MarkUnsynced extends NotesEvent {
   const MarkUnsynced();
 }
 
+class ArchiveNote extends NotesEvent {
+  final String filePath;
+  const ArchiveNote(this.filePath);
+
+  @override
+  List<Object?> get props => [filePath];
+}
+
+class UnarchiveNote extends NotesEvent {
+  final String filePath;
+  const UnarchiveNote(this.filePath);
+
+  @override
+  List<Object?> get props => [filePath];
+}
+
 // States
 abstract class NotesState extends Equatable {
   const NotesState();
@@ -177,6 +193,8 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     on<SearchNotes>(_onSearchNotes);
     on<SyncWithGit>(_onSyncWithGit);
     on<MarkUnsynced>(_onMarkUnsynced);
+    on<ArchiveNote>(_onArchiveNote);
+    on<UnarchiveNote>(_onUnarchiveNote);
   }
 
   Future<void> _onLoadNotes(
@@ -312,6 +330,56 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     if (currentState is! NotesLoaded) return;
 
     emit(currentState.copyWith(hasUnsyncedChanges: true));
+  }
+
+  Future<void> _onArchiveNote(
+    ArchiveNote event,
+    Emitter<NotesState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! NotesLoaded) return;
+
+    try {
+      // 调用存储服务归档笔记
+      final archivedNote = await _storageService.archiveNote(event.filePath);
+      if (archivedNote != null) {
+        // 重新加载笔记列表
+        final notes = await _storageService.getAllNotes();
+        emit(currentState.copyWith(
+          notes: notes,
+          selectedNote: currentState.selectedNote?.filePath == event.filePath 
+              ? archivedNote 
+              : currentState.selectedNote,
+        ));
+      }
+    } catch (e) {
+      print('归档笔记失败: $e');
+    }
+  }
+
+  Future<void> _onUnarchiveNote(
+    UnarchiveNote event,
+    Emitter<NotesState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! NotesLoaded) return;
+
+    try {
+      // 调用存储服务取消归档
+      final unarchivedNote = await _storageService.unarchiveNote(event.filePath);
+      if (unarchivedNote != null) {
+        // 重新加载笔记列表
+        final notes = await _storageService.getAllNotes();
+        emit(currentState.copyWith(
+          notes: notes,
+          selectedNote: currentState.selectedNote?.filePath == event.filePath 
+              ? unarchivedNote 
+              : currentState.selectedNote,
+        ));
+      }
+    } catch (e) {
+      print('取消归档失败: $e');
+    }
   }
 
   Future<void> _onSyncWithGit(

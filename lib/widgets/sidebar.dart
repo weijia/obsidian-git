@@ -5,7 +5,7 @@ import '../../models/folder.dart';
 import '../../blocs/notes/notes_bloc.dart';
 
 /// 侧边栏组件 - 文件夹和笔记列表
-class Sidebar extends StatelessWidget {
+class Sidebar extends StatefulWidget {
   final List<Folder> folders;
   final List<Note> notes;
   final Folder? selectedFolder;
@@ -28,6 +28,22 @@ class Sidebar extends StatelessWidget {
   });
 
   @override
+  State<Sidebar> createState() => _SidebarState();
+}
+
+class _SidebarState extends State<Sidebar> {
+  bool _showArchived = true; // 默认显示归档文件
+
+  /// 过滤笔记列表
+  List<Note> get _filteredNotes {
+    if (_showArchived) {
+      return widget.notes;
+    }
+    // 隐藏 archive 目录下的文件
+    return widget.notes.where((note) => !note.filePath.startsWith('archive/')).toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       width: 280,
@@ -45,6 +61,8 @@ class Sidebar extends StatelessWidget {
           _buildHeader(context),
           // 搜索框
           _buildSearchBar(context),
+          // 归档过滤开关
+          _buildArchiveFilter(context),
           // 文件夹列表
           _buildFolderList(context),
           const Divider(height: 1),
@@ -80,7 +98,7 @@ class Sidebar extends StatelessWidget {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 20),
-            onPressed: onOpenSettings,
+            onPressed: widget.onOpenSettings,
             tooltip: '设置',
             color: Theme.of(context).colorScheme.onPrimaryContainer,
           ),
@@ -109,17 +127,48 @@ class Sidebar extends StatelessWidget {
     );
   }
 
+  /// 归档过滤开关
+  Widget _buildArchiveFilter(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.archive_outlined,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '显示归档文件',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          Switch(
+            value: _showArchived,
+            onChanged: (value) {
+              setState(() {
+                _showArchived = value;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFolderList(BuildContext context) {
-    if (folders.isEmpty) return const SizedBox.shrink();
+    if (widget.folders.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
       height: 120,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: folders.length,
+        itemCount: widget.folders.length,
         itemBuilder: (context, index) {
-          final folder = folders[index];
-          final isSelected = selectedFolder?.path == folder.path;
+          final folder = widget.folders[index];
+          final isSelected = widget.selectedFolder?.path == folder.path;
 
           return ListTile(
             dense: true,
@@ -144,7 +193,7 @@ class Sidebar extends StatelessWidget {
                 : null,
             selected: isSelected,
             selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withAlpha(77),
-            onTap: () => onFolderSelected(folder),
+            onTap: () => widget.onFolderSelected(folder),
           );
         },
       ),
@@ -152,7 +201,9 @@ class Sidebar extends StatelessWidget {
   }
 
   Widget _buildNoteList(BuildContext context) {
-    if (notes.isEmpty) {
+    final filteredNotes = _filteredNotes;
+    
+    if (filteredNotes.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -164,7 +215,7 @@ class Sidebar extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '暂无笔记',
+              _showArchived ? '暂无笔记' : '暂无笔记（已隐藏归档）',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: Theme.of(context).colorScheme.outline,
                   ),
@@ -173,7 +224,7 @@ class Sidebar extends StatelessWidget {
             TextButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('创建笔记'),
-              onPressed: onCreateNote,
+              onPressed: widget.onCreateNote,
             ),
           ],
         ),
@@ -182,19 +233,22 @@ class Sidebar extends StatelessWidget {
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      itemCount: notes.length,
+      itemCount: filteredNotes.length,
       itemBuilder: (context, index) {
-        final note = notes[index];
-        final isSelected = selectedNote?.filePath == note.filePath;
+        final note = filteredNotes[index];
+        final isSelected = widget.selectedNote?.filePath == note.filePath;
+        final isArchived = note.filePath.startsWith('archive/');
 
         return ListTile(
           dense: true,
           leading: Icon(
-            Icons.description_outlined,
+            isArchived ? Icons.archive_outlined : Icons.description_outlined,
             size: 20,
             color: isSelected
                 ? Theme.of(context).colorScheme.primary
-                : null,
+                : isArchived
+                    ? Theme.of(context).colorScheme.outline
+                    : null,
           ),
           title: Text(
             note.title,
@@ -202,6 +256,7 @@ class Sidebar extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontWeight: isSelected ? FontWeight.bold : null,
+              color: isArchived ? Theme.of(context).colorScheme.outline : null,
             ),
           ),
           subtitle: note.tags.isNotEmpty
@@ -221,12 +276,16 @@ class Sidebar extends StatelessWidget {
               : null,
           selected: isSelected,
           selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withAlpha(77),
-          onTap: () => onNoteSelected(note),
+          onTap: () => widget.onNoteSelected(note),
           trailing: PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 18),
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'rename', child: Text('重命名')),
               const PopupMenuItem(value: 'move', child: Text('移动到...')),
+              if (!isArchived)
+                const PopupMenuItem(value: 'archive', child: Text('归档')),
+              if (isArchived)
+                const PopupMenuItem(value: 'unarchive', child: Text('取消归档')),
               const PopupMenuItem(value: 'delete', child: Text('删除')),
             ],
             onSelected: (value) {
@@ -236,6 +295,10 @@ class Sidebar extends StatelessWidget {
                 _showRenameDialog(context, note);
               } else if (value == 'move') {
                 _showMoveDialog(context, note);
+              } else if (value == 'archive') {
+                _archiveNote(context, note);
+              } else if (value == 'unarchive') {
+                _unarchiveNote(context, note);
               }
             },
           ),
@@ -323,6 +386,22 @@ class Sidebar extends StatelessWidget {
     );
   }
 
+  /// 归档笔记
+  void _archiveNote(BuildContext context, Note note) {
+    context.read<NotesBloc>().add(ArchiveNote(note.filePath));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"${note.title}" 已归档')),
+    );
+  }
+
+  /// 取消归档
+  void _unarchiveNote(BuildContext context, Note note) {
+    context.read<NotesBloc>().add(UnarchiveNote(note.filePath));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"${note.title}" 已取消归档')),
+    );
+  }
+
   Widget _buildBottomBar(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(8),
@@ -337,7 +416,7 @@ class Sidebar extends StatelessWidget {
             child: OutlinedButton.icon(
               icon: const Icon(Icons.add, size: 18),
               label: const Text('新建笔记'),
-              onPressed: onCreateNote,
+              onPressed: widget.onCreateNote,
             ),
           ),
           const SizedBox(width: 8),

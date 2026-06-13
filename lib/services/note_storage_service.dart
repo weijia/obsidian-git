@@ -202,6 +202,89 @@ class NoteStorageService {
     }
   }
 
+  /// 归档笔记 - 移动到 archive 目录
+  Future<Note?> archiveNote(String filePath) async {
+    if (_basePath == null) return null;
+
+    try {
+      final oldFile = File(p.join(_basePath!, filePath));
+      if (!await oldFile.exists()) return null;
+
+      // 如果已经在 archive 目录下，直接返回
+      if (filePath.startsWith('archive/')) {
+        final content = await oldFile.readAsString();
+        return Note.fromMarkdown(filePath, content);
+      }
+
+      // 获取文件名
+      final fileName = filePath.split('/').last;
+      final newPath = 'archive/$fileName';
+      final newFile = File(p.join(_basePath!, newPath));
+
+      // 确保 archive 目录存在
+      await newFile.parent.create(recursive: true);
+
+      // 处理文件名冲突
+      var finalPath = newPath;
+      var counter = 1;
+      while (await newFile.exists()) {
+        finalPath = 'archive/${fileName.replaceAll('.md', '_$counter.md')}';
+        counter++;
+      }
+
+      // 移动文件
+      final finalFile = File(p.join(_basePath!, finalPath));
+      await oldFile.rename(finalFile.path);
+
+      // 返回更新后的 Note
+      final content = await finalFile.readAsString();
+      return Note.fromMarkdown(finalPath, content);
+    } catch (e) {
+      print('归档笔记失败: $e');
+      return null;
+    }
+  }
+
+  /// 取消归档 - 从 archive 目录移回根目录
+  Future<Note?> unarchiveNote(String filePath) async {
+    if (_basePath == null) return null;
+
+    try {
+      final oldFile = File(p.join(_basePath!, filePath));
+      if (!await oldFile.exists()) return null;
+
+      // 如果不在 archive 目录下，直接返回
+      if (!filePath.startsWith('archive/')) {
+        final content = await oldFile.readAsString();
+        return Note.fromMarkdown(filePath, content);
+      }
+
+      // 获取文件名（去掉 archive/ 前缀）
+      final fileName = filePath.replaceFirst('archive/', '');
+      final newPath = fileName;
+      final newFile = File(p.join(_basePath!, newPath));
+
+      // 处理文件名冲突
+      var finalPath = newPath;
+      var counter = 1;
+      while (await newFile.exists()) {
+        finalPath = '${fileName.replaceAll('.md', '_$counter.md')}';
+        counter++;
+      }
+
+      // 移动文件
+      final finalFile = File(p.join(_basePath!, finalPath));
+      await oldFile.rename(finalFile.path);
+
+      // 返回更新后的 Note
+      final content = await finalFile.readAsString();
+      return Note.fromMarkdown(finalPath, content);
+    } catch (e) {
+      print('取消归档失败: $e');
+      return null;
+    }
+  }
+
   /// 获取所有文件夹
   Future<List<Folder>> getAllFolders() async {
     if (_basePath == null) return [];

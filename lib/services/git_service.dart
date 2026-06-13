@@ -17,28 +17,38 @@ class GitService {
   GitService._internal();
 
   bool _isInitialized = false;
+  
+  /// 日志回调
+  void Function(String)? onLog;
+  
+  void _log(String message) {
+    final line = '[Git] $message';
+    print(line);
+    onLog?.call(line);
+  }
 
   /// 初始化 Git 服务
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
+      _log('开始初始化 Git 服务...');
       // Android 上初始化 libgit2 SSL
       // 这是 git2dart 0.4.0+ 的要求，用于正确处理 HTTPS 证书
       if (Platform.isAndroid) {
-        print('正在初始化 Android 平台 SSL...');
+        _log('Android 平台，初始化 SSL...');
         // 先访问 Libgit2 触发初始化
-        print('libgit2 version: ${git2.Libgit2.version}');
+        _log('libgit2 version: ${git2.Libgit2.version}');
         // 然后初始化 SSL 证书
         final certPath = await binaries.AndroidSSLHelper.initialize();
         git2.Libgit2.setSSLCertLocations(file: certPath);
-        print('Android SSL 初始化完成');
+        _log('SSL 证书路径: $certPath');
       }
 
       _isInitialized = true;
-      print('GitService 初始化成功');
+      _log('Git 服务初始化成功');
     } catch (e) {
-      print('GitService 初始化失败: $e');
+      _log('Git 服务初始化失败: $e');
       rethrow;
     }
   }
@@ -49,7 +59,9 @@ class GitService {
   git2.Callbacks _buildCallbacks(GitConfig config) {
     // HTTPS 认证 - 使用 Personal Access Token
     if (config.useHTTPS && config.httpsToken != null && config.httpsToken!.isNotEmpty) {
-      print('使用 HTTPS + Personal Access Token 认证');
+      _log('认证方式: HTTPS + Personal Access Token');
+      _log('  用户名: ${config.username ?? "git"}');
+      _log('  Token: ${config.httpsToken!.substring(0, 4)}...${config.httpsToken!.length > 8 ? config.httpsToken!.substring(config.httpsToken!.length - 4) : ""}');
       return git2.Callbacks(
         credentials: git2.UserPass(
           username: config.username ?? 'git',
@@ -60,7 +72,7 @@ class GitService {
 
     // SSH 认证 - 使用内存中的密钥
     if (config.useSSH && config.sshPrivateKey != null && config.sshPrivateKey!.isNotEmpty) {
-      print('使用 SSH 密钥认证');
+      _log('认证方式: SSH 密钥');
       return git2.Callbacks(
         credentials: git2.KeypairFromMemory(
           username: 'git',
@@ -72,7 +84,7 @@ class GitService {
     }
 
     // 无认证（公开仓库）
-    print('使用无认证方式（公开仓库）');
+    _log('认证方式: 无认证（公开仓库）');
     return const git2.Callbacks();
   }
 
@@ -120,22 +132,34 @@ class GitService {
     if (!_isInitialized) await initialize();
 
     final url = _getProcessedUrl(config);
-    print('克隆仓库: $url -> $localPath');
+    _log('========== 克隆仓库 ==========');
+    _log('远程 URL: $url');
+    _log('本地路径: $localPath');
+    _log('分支: ${config.branch}');
 
     final parentDir = Directory(localPath).parent;
     if (!await parentDir.exists()) {
+      _log('创建父目录: ${parentDir.path}');
       await parentDir.create(recursive: true);
     }
 
     try {
+      _log('开始克隆...');
+      final stopwatch = Stopwatch()..start();
       git2.Repository.clone(
         url: url,
         localPath: localPath,
         callbacks: _buildCallbacks(config),
       );
-      print('克隆成功');
+      stopwatch.stop();
+      _log('克隆成功！耗时: ${stopwatch.elapsedMilliseconds}ms');
+      
+      // 列出克隆的文件
+      final repoDir = Directory(localPath);
+      final files = await repoDir.list(recursive: true).where((f) => f is File).toList();
+      _log('克隆了 ${files.length} 个文件');
     } catch (e) {
-      print('克隆失败: $e');
+      _log('克隆失败: $e');
       rethrow;
     }
   }
@@ -148,6 +172,10 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
+    _log('========== Fetch ==========');
+    _log('本地路径: $localPath');
+    _log('远程名称: $remoteName');
+
     final repo = git2.Repository.open(localPath);
 
     // 如果需要，更新远程 URL
@@ -155,20 +183,24 @@ class GitService {
     final configEntry = repo.config['remote.$remoteName.url'];
     final currentUrl = configEntry.value;
     if (currentUrl != url) {
-      print('更新远程 URL: $currentUrl -> $url');
+      _log('更新远程 URL: $currentUrl -> $url');
       git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
+    } else {
+      _log('远程 URL: $url');
     }
 
     final remote = git2.Remote.lookup(repo: repo, name: remoteName);
 
-    print('获取远程更新...');
+    _log('开始获取远程更新...');
     try {
+      final stopwatch = Stopwatch()..start();
       remote.fetch(
         callbacks: _buildCallbacks(config),
       );
-      print('获取成功');
+      stopwatch.stop();
+      _log('Fetch 成功！耗时: ${stopwatch.elapsedMilliseconds}ms');
     } catch (e) {
-      print('获取失败: $e');
+      _log('Fetch 失败: $e');
       rethrow;
     } finally {
       remote.free();
@@ -184,6 +216,10 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
+    _log('========== Push ==========');
+    _log('本地路径: $localPath');
+    _log('远程名称: $remoteName');
+
     final repo = git2.Repository.open(localPath);
 
     // 如果需要，更新远程 URL
@@ -191,20 +227,24 @@ class GitService {
     final configEntry = repo.config['remote.$remoteName.url'];
     final currentUrl = configEntry.value;
     if (currentUrl != url) {
-      print('更新远程 URL: $currentUrl -> $url');
+      _log('更新远程 URL: $currentUrl -> $url');
       git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
+    } else {
+      _log('远程 URL: $url');
     }
 
     final remote = git2.Remote.lookup(repo: repo, name: remoteName);
 
-    print('推送到远程...');
+    _log('开始推送到远程...');
     try {
+      final stopwatch = Stopwatch()..start();
       remote.push(
         callbacks: _buildCallbacks(config),
       );
-      print('推送成功');
+      stopwatch.stop();
+      _log('Push 成功！耗时: ${stopwatch.elapsedMilliseconds}ms');
     } catch (e) {
-      print('推送失败: $e');
+      _log('Push 失败: $e');
       rethrow;
     } finally {
       remote.free();
@@ -219,18 +259,30 @@ class GitService {
 
   /// 添加文件
   void add(String repoPath, String filePattern) {
+    _log('========== Add ==========');
+    _log('仓库路径: $repoPath');
+    _log('文件模式: $filePattern');
+    
     final repo = git2.Repository.open(repoPath);
     final index = repo.index;
+    
+    int addedCount = 0;
     if (filePattern == '.') {
       // 遍历添加所有变更的文件
-      for (final file in repo.status.keys) {
+      final statusMap = repo.status;
+      _log('状态检查: 发现 ${statusMap.length} 个变更');
+      for (final file in statusMap.keys) {
+        _log('  添加: $file');
         index.add(file);
+        addedCount++;
       }
     } else {
       index.add(filePattern);
+      addedCount = 1;
     }
     index.write();
     repo.free();
+    _log('添加了 $addedCount 个文件到暂存区');
   }
 
   /// 提交
@@ -240,6 +292,11 @@ class GitService {
     required String authorName,
     required String authorEmail,
   }) {
+    _log('========== Commit ==========');
+    _log('仓库路径: $repoPath');
+    _log('提交信息: $message');
+    _log('作者: $authorName <$authorEmail>');
+    
     final repo = git2.Repository.open(repoPath);
 
     // 获取索引并写入树
@@ -247,16 +304,20 @@ class GitService {
     index.write();
     final treeOid = index.writeTree();
     final tree = git2.Tree.lookup(repo: repo, oid: treeOid);
+    _log('树 OID: $treeOid');
 
     // 获取父提交
     final List<git2.Commit> parents = [];
     if (!repo.isEmpty) {
       final headCommit = git2.Commit.lookup(repo: repo, oid: repo.head.target);
       parents.add(headCommit);
+      _log('父提交: ${headCommit.oid}');
+    } else {
+      _log('首次提交（无父提交）');
     }
 
     // 使用 Commit.create 静态方法创建提交
-    git2.Commit.create(
+    final commitOid = git2.Commit.create(
       repo: repo,
       updateRef: 'HEAD',
       author: git2.Signature.create(
@@ -273,6 +334,7 @@ class GitService {
       tree: tree,
       parents: parents,
     );
+    _log('提交成功！OID: $commitOid');
 
     // 释放资源
     tree.free();
@@ -307,7 +369,7 @@ class GitService {
     return commits;
   }
 
-  /// 拉取并合并
+  /// 拉取
   Future<void> pull({
     required GitConfig config,
     required String localPath,
@@ -315,38 +377,93 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
+    _log('========== Pull ==========');
+    _log('本地路径: $localPath');
+    _log('远程名称: $remoteName');
+
     final repo = git2.Repository.open(localPath);
 
-    // 获取远程更新
-    await fetch(config: config, localPath: localPath, remoteName: remoteName);
-
-    // 合并远程分支到 HEAD
-    if (!repo.isEmpty) {
-      final remoteRef = 'refs/remotes/$remoteName/${config.branch}';
-
-      try {
-        // 使用 RevParse 将引用名解析为 Commit
-        final revParse = git2.RevParse.single(
-          repo: repo,
-          spec: remoteRef,
-        );
-
-        if (revParse is git2.Commit) {
-          // 使用 AnnotatedCommit 进行合并
-          final annotatedCommit = git2.AnnotatedCommit.lookup(repo: repo, oid: revParse.oid);
-          git2.Merge.commit(
-            repo: repo,
-            commit: annotatedCommit,
-          );
-          annotatedCommit.free();
-        }
-      } catch (e) {
-        // 远程引用不存在（可能是新仓库或空仓库），跳过合并
-        print('远程引用 $remoteRef 不存在，跳过合并: $e');
-      }
+    // 如果需要，更新远程 URL
+    final url = _getProcessedUrl(config);
+    final configEntry = repo.config['remote.$remoteName.url'];
+    final currentUrl = configEntry.value;
+    if (currentUrl != url) {
+      _log('更新远程 URL: $currentUrl -> $url');
+      git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
+    } else {
+      _log('远程 URL: $url');
     }
 
+    // 获取远程更新
+    _log('开始 fetch...');
+    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+    try {
+      remote.fetch(
+        callbacks: _buildCallbacks(config),
+      );
+      _log('Fetch 完成');
+    } catch (e) {
+      _log('Fetch 失败: $e');
+      rethrow;
+    } finally {
+      remote.free();
+    }
+
+    // 合并远程分支
+    _log('开始合并远程分支...');
+    final remoteBranch = git2.Branch.lookup(
+      repo: repo,
+      name: '$remoteName/${config.branch}',
+      type: git2.BranchType.remote,
+    );
+    _log('远程分支: ${remoteBranch.name}');
+
+    final annotatedCommit = git2.AnnotatedCommit.lookup(
+      repo: repo,
+      oid: remoteBranch.target,
+    );
+    _log('远程提交: ${annotatedCommit.oid}');
+
+    // 分析合并
+    final analysis = git2.Merge.analysis(
+      repo: repo,
+      theirHeads: [annotatedCommit],
+    );
+    _log('分析结果: ${analysis.analysis}');
+
+    if (analysis.analysis == git2.MergeAnalysis.upToDate) {
+      _log('已是最新，无需合并');
+      annotatedCommit.free();
+      remoteBranch.free();
+      repo.free();
+      return;
+    }
+
+    if (analysis.analysis == git2.MergeAnalysis.fastForward) {
+      _log('执行快进合并...');
+      // 快进合并
+      final refName = 'refs/heads/${config.branch}';
+      git2.Reference.setTarget(
+        repo: repo,
+        name: refName,
+        target: annotatedCommit.oid,
+      );
+      // 更新工作目录
+      final commit = git2.Commit.lookup(repo: repo, oid: annotatedCommit.oid);
+      repo.reset(commit, git2.ResetType.hard);
+      commit.free();
+      _log('快进合并完成');
+    } else if (analysis.analysis == git2.MergeAnalysis.normal) {
+      _log('执行普通合并...');
+      // 普通合并
+      git2.Merge.commit(repo: repo, theirHeads: [annotatedCommit]);
+      _log('普通合并完成（可能需要解决冲突）');
+    }
+
+    annotatedCommit.free();
+    remoteBranch.free();
     repo.free();
+    _log('Pull 完成');
   }
 
   /// 同步结果

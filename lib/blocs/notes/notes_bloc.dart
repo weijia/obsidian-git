@@ -176,15 +176,22 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
   final NoteStorageService _storageService;
   final GitService _gitService;
   final SettingsService _settingsService;
+  
+  /// 日志回调
+  void Function(String)? onLog;
 
   NotesBloc({
     required NoteStorageService storageService,
     required GitService gitService,
     required SettingsService settingsService,
+    this.onLog,
   })  : _storageService = storageService,
         _gitService = gitService,
         _settingsService = settingsService,
         super(NotesInitial()) {
+    // 连接 GitService 日志
+    _gitService.onLog = onLog;
+    
     on<LoadNotes>(_onLoadNotes);
     on<CreateNote>(_onCreateNote);
     on<SelectNote>(_onSelectNote);

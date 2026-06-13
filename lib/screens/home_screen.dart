@@ -114,6 +114,10 @@ class _HomeScreenState extends State<HomeScreen> {
       storageService: _storageService,
       gitService: _gitService,
       settingsService: _settingsService,
+      onLog: (message) {
+        _debugLogs.add(message);
+        if (_debugLogs.length > 100) _debugLogs.removeAt(0);
+      },
     );
     // 连接 SettingsService 日志到调试面板
     _settingsService.onLog = (message) {

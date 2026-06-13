@@ -258,14 +258,14 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       await _gitService.initialize();
       
       // 添加所有更改
-      await _gitService.add(localPath: config.localPath);
+      _gitService.add(config.localPath, '.');
       
       // 提交
-      await _gitService.commit(
-        localPath: config.localPath,
+      _gitService.commit(
+        repoPath: config.localPath,
         message: '自动提交: ${DateTime.now().toString().substring(0, 19)}',
-        username: config.username,
-        email: config.email,
+        authorName: config.username ?? 'ObsidianGit',
+        authorEmail: config.email ?? 'obsidian-git@local',
       );
       
       // 推送

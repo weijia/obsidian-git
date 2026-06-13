@@ -156,6 +156,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _log('  lastOpenedNotePath: ${_settingsService.lastOpenedNotePath}');
       _log('  lastOpenedFolderPath: ${_settingsService.lastOpenedFolderPath}');
       _log('  lastSourceMode: ${_settingsService.lastSourceMode}');
+      _log('  showArchived: ${_settingsService.showArchived}');
+
+      // 从配置恢复 UI 状态
+      _showArchived = _settingsService.showArchived;
+      _isSourceMode = _settingsService.lastSourceMode;
 
       // 确定存储路径
       String? storagePath;
@@ -388,6 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           setState(() {
                             _showArchived = value;
                           });
+                          // 保存到配置文件
+                          _settingsService.saveUiState(showArchived: value);
                         },
                       ),
                     ),

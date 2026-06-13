@@ -29,6 +29,7 @@ class SettingsService {
   String? _lastOpenedNotePath;
   String? _lastOpenedFolderPath;
   bool _lastSourceMode = false;
+  bool _showArchived = true; // 显示归档文件（默认显示）
 
   // 日志回调
   void Function(String)? onLog;
@@ -37,6 +38,7 @@ class SettingsService {
   String? get lastOpenedNotePath => _lastOpenedNotePath;
   String? get lastOpenedFolderPath => _lastOpenedFolderPath;
   bool get lastSourceMode => _lastSourceMode;
+  bool get showArchived => _showArchived;
   bool get hasSafDirectory => _safDir != null;
   String? get safDirectoryUri => _safDir?.uri;
 
@@ -114,8 +116,9 @@ class SettingsService {
     _lastOpenedNotePath = _prefs!.getString(_keyLastNotePath);
     _lastOpenedFolderPath = _prefs!.getString(_keyLastFolderPath);
     _lastSourceMode = _prefs!.getBool(_keyLastSourceMode) ?? false;
+    _showArchived = _prefs!.getBool('show_archived') ?? true;
 
-    _log('UI 状态: notePath=$_lastOpenedNotePath, folderPath=$_lastOpenedFolderPath, sourceMode=$_lastSourceMode');
+    _log('UI 状态: notePath=$_lastOpenedNotePath, folderPath=$_lastOpenedFolderPath, sourceMode=$_lastSourceMode, showArchived=$_showArchived');
   }
 
   /// 解析配置内容
@@ -128,6 +131,8 @@ class SettingsService {
       _lastOpenedNotePath = json['lastOpenedNotePath'];
       _lastOpenedFolderPath = json['lastOpenedFolderPath'];
       _lastSourceMode = json['lastSourceMode'] ?? false;
+      _showArchived = json['showArchived'] ?? true;
+      _log('UI 状态: showArchived=$_showArchived');
     } catch (e) {
       _log('解析配置失败: $e');
     }
@@ -175,10 +180,12 @@ class SettingsService {
     String? notePath,
     String? folderPath,
     bool? sourceMode,
+    bool? showArchived,
   }) async {
     if (notePath != null) _lastOpenedNotePath = notePath;
     if (folderPath != null) _lastOpenedFolderPath = folderPath;
     if (sourceMode != null) _lastSourceMode = sourceMode;
+    if (showArchived != null) _showArchived = showArchived;
     await _saveAll();
     _log('UI 状态已保存');
   }
@@ -192,6 +199,7 @@ class SettingsService {
     json['lastOpenedNotePath'] = _lastOpenedNotePath;
     json['lastOpenedFolderPath'] = _lastOpenedFolderPath;
     json['lastSourceMode'] = _lastSourceMode;
+    json['showArchived'] = _showArchived;
     final content = jsonEncode(json);
 
     // 1. 尝试保存到 SAF
@@ -209,6 +217,7 @@ class SettingsService {
     await _prefs?.setString(_keyLastNotePath, _lastOpenedNotePath ?? '');
     await _prefs?.setString(_keyLastFolderPath, _lastOpenedFolderPath ?? '');
     await _prefs?.setBool(_keyLastSourceMode, _lastSourceMode);
+    await _prefs?.setBool('show_archived', _showArchived);
   }
 
   /// 写入到 SAF

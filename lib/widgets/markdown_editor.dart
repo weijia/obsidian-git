@@ -110,6 +110,9 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   Widget _buildVisualEditor() {
     final colorScheme = Theme.of(context).colorScheme;
+    // 获取屏幕宽度，减去边距
+    final screenWidth = MediaQuery.of(context).size.width;
+    final editorWidth = screenWidth - 32; // 左右各 16px 边距
 
     return AppFlowyEditor(
       editorState: _editorState,
@@ -119,6 +122,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         padding: const EdgeInsets.all(16),
         cursorColor: colorScheme.primary,
         selectionColor: colorScheme.primaryContainer.withAlpha(102),
+        // 限制最大宽度，防止内容超出屏幕
+        maxWidth: editorWidth,
         textStyleConfiguration: TextStyleConfiguration(
           text: TextStyle(
             color: colorScheme.onSurface,
@@ -786,6 +791,11 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   }
 
   Node _createTableNode({required int rows, required int cols}) {
+    // 获取屏幕宽度，计算合适的列宽
+    final screenWidth = MediaQuery.of(context).size.width;
+    final availableWidth = screenWidth - 64; // 减去边距和表格边框
+    final colWidth = (availableWidth / cols).clamp(60.0, 200.0); // 最小 60，最大 200
+    
     // 先创建所有单元格子节点
     final List<Node> cells = [];
     for (var col = 0; col < cols; col++) {
@@ -796,7 +806,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           attributes: {
             TableCellBlockKeys.rowPosition: row,
             TableCellBlockKeys.colPosition: col,
-            TableCellBlockKeys.width: 120.0,
+            TableCellBlockKeys.width: colWidth,
             TableCellBlockKeys.height: 40.0,
           },
           children: [
@@ -813,7 +823,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       attributes: {
         TableBlockKeys.colsLen: cols,
         TableBlockKeys.rowsLen: rows,
-        TableBlockKeys.colDefaultWidth: 120.0,
+        TableBlockKeys.colDefaultWidth: colWidth,
         TableBlockKeys.rowDefaultHeight: 40.0,
         TableBlockKeys.colMinimumWidth: 40.0,
         TableBlockKeys.borderWidth: 1.0,

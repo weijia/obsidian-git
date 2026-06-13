@@ -434,6 +434,8 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     final currentState = state;
     if (currentState is! NotesLoaded) return;
 
+    onLog?.call('========== 开始同步 ==========');
+
     emit(currentState.copyWith(
       isSyncing: true,
       clearSyncError: true,
@@ -443,6 +445,7 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       // 从 SettingsService 读取配置
       final config = _settingsService.gitConfig;
       if (config == null || config.localPath.isEmpty) {
+        onLog?.call('❌ 未配置 Git 仓库');
         emit(currentState.copyWith(
           isSyncing: false,
           syncError: '未配置 Git 仓库',
@@ -450,10 +453,16 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
         return;
       }
 
+      onLog?.call('仓库路径: ${config.localPath}');
+      onLog?.call('远程 URL: ${config.repoUrl}');
+      onLog?.call('分支: ${config.branch}');
+
       // 1. 添加所有更改
+      onLog?.call('步骤 1: 添加更改到暂存区...');
       _gitService.add(config.localPath, '.');
 
       // 2. 提交到本地（如果有变更）
+      onLog?.call('步骤 2: 提交更改...');
       try {
         _gitService.commit(
           repoPath: config.localPath,
@@ -461,18 +470,21 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
           authorName: config.username ?? 'Obsidian Git User',
           authorEmail: config.email ?? 'user@example.com',
         );
+        onLog?.call('✅ 提交成功');
       } catch (e) {
-        // 没有变更需要提交，继续
-        print('No changes to commit: $e');
+        onLog?.call('⚠️ 没有变更需要提交: $e');
       }
 
       // 3. 拉取远程更新
+      onLog?.call('步骤 3: 拉取远程更新...');
       try {
         await _gitService.pull(
           config: config,
           localPath: config.localPath,
         );
+        onLog?.call('✅ 拉取成功');
       } catch (e) {
+        onLog?.call('❌ 拉取失败: $e');
         emit(currentState.copyWith(
           isSyncing: false,
           syncError: '拉取失败: $e',
@@ -481,12 +493,15 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       }
 
       // 4. 推送到远程
+      onLog?.call('步骤 4: 推送到远程...');
       try {
         await _gitService.push(
           config: config,
           localPath: config.localPath,
         );
+        onLog?.call('✅ 推送成功');
       } catch (e) {
+        onLog?.call('❌ 推送失败: $e');
         emit(currentState.copyWith(
           isSyncing: false,
           syncError: '推送失败: $e',
@@ -495,13 +510,16 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
       }
 
       // 5. 重新加载笔记
+      onLog?.call('步骤 5: 重新加载笔记列表...');
       final notes = await _storageService.getAllNotes();
+      onLog?.call('✅ 同步完成！共 ${notes.length} 个笔记');
       emit(currentState.copyWith(
         notes: notes,
         isSyncing: false,
         hasUnsyncedChanges: false,
       ));
     } catch (e) {
+      onLog?.call('❌ 同步失败: $e');
       emit(currentState.copyWith(
         isSyncing: false,
         syncError: e.toString(),

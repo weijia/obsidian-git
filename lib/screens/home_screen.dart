@@ -842,35 +842,73 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('🔍 调试日志'),
+        title: Row(
+          children: [
+            const Text('🔍 调试日志'),
+            const Spacer(),
+            Text(
+              '${_debugLogs.length} 条',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
         content: SizedBox(
           width: double.maxFinite,
-          height: 400,
+          height: 500,
           child: _debugLogs.isEmpty
               ? const Center(child: Text('暂无日志'))
-              : ListView.builder(
-                  itemCount: _debugLogs.length,
-                  itemBuilder: (context, index) {
-                    final log = _debugLogs[index];
-                    final isError = log.contains('❌') || log.contains('⚠️');
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 1),
-                      child: Text(
-                        log,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          color: isError ? Colors.red : Colors.black87,
+              : Container(
+                  color: const Color(0xFF1E1E1E), // 深色背景
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: _debugLogs.length,
+                    itemBuilder: (context, index) {
+                      final log = _debugLogs[index];
+                      // 根据日志类型设置颜色
+                      Color textColor;
+                      if (log.contains('❌') || log.contains('失败') || log.contains('Error')) {
+                        textColor = const Color(0xFFFF6B6B); // 红色
+                      } else if (log.contains('✅') || log.contains('成功') || log.contains('完成')) {
+                        textColor = const Color(0xFF69F0AE); // 绿色
+                      } else if (log.contains('⚠️') || log.contains('警告')) {
+                        textColor = const Color(0xFFFFD54F); // 黄色
+                      } else if (log.startsWith('[Git]')) {
+                        textColor = const Color(0xFF64B5F6); // 蓝色
+                      } else if (log.startsWith('[Settings]')) {
+                        textColor = const Color(0xFFCE93D8); // 紫色
+                      } else {
+                        textColor = const Color(0xFFE0E0E0); // 浅灰色
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: SelectableText(
+                          log,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            color: textColor,
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
         ),
         actions: [
           TextButton(
             onPressed: () {
-              // 复制日志到剪贴板
+              setState(() {
+                _debugLogs.clear();
+              });
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('日志已清空')),
+              );
+            },
+            child: const Text('清空'),
+          ),
+          TextButton(
+            onPressed: () {
               Clipboard.setData(ClipboardData(text: _debugLogs.join('\n')));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('日志已复制到剪贴板')),

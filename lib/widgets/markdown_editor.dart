@@ -107,14 +107,24 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         if (!widget.readOnly && !widget.isSourceMode) _buildToolbar(),
         // 编辑器
         Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: widget.isSourceMode
-                ? _buildSourceEditor()
-                : _buildVisualEditor(),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // 当宽度变化时调整表格
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !widget.isSourceMode) {
+                  _adjustTableWidths();
+                }
+              });
+              return Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: widget.isSourceMode
+                    ? _buildSourceEditor()
+                    : _buildVisualEditor(),
+              );
+            },
           ),
         ),
       ],
@@ -127,8 +137,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     final screenWidth = MediaQuery.of(context).size.width;
     // 计算可用宽度：屏幕宽度 - 编辑器内边距(32) - 表格内边距(20) - 边框(4)
     final availableWidth = screenWidth - 56;
-    // 默认列宽：假设 2 列，让表格尽量不滚动
-    final tableColWidth = (availableWidth / 2).clamp(60.0, 100.0);
+    // 默认列宽：假设 2 列，适当加宽
+    final tableColWidth = (availableWidth / 2).clamp(80.0, 150.0);
 
     return AppFlowyEditor(
       editorState: _editorState,
@@ -198,7 +208,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         try {
           final tableNode = TableNode(node: node);
           final colsLen = tableNode.colsLen;
-          final dynamicColWidth = (availableWidth / colsLen).clamp(40.0, 100.0);
+          // 加宽列宽范围
+          final dynamicColWidth = (availableWidth / colsLen).clamp(60.0, 150.0);
           
           // 更新每个单元格的宽度
           for (final cell in node.children) {

@@ -113,6 +113,9 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     // 获取屏幕宽度，减去边距
     final screenWidth = MediaQuery.of(context).size.width;
     final editorWidth = screenWidth - 32; // 左右各 16px 边距
+    
+    // 计算表格列宽，假设最多 4 列，使表格适应屏幕
+    final tableColWidth = (editorWidth / 4).clamp(80.0, 150.0);
 
     return AppFlowyEditor(
       editorState: _editorState,
@@ -156,9 +159,15 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       ),
       blockComponentBuilders: {
         ...standardBlockComponentBuilderMap,
-        // 为表格添加行/列操作菜单
+        // 为表格添加行/列操作菜单，并设置列宽适应屏幕
         TableBlockKeys.type: TableBlockComponentBuilder(
           menuBuilder: _buildTableMenu,
+          tableStyle: TableStyle(
+            colWidth: tableColWidth,
+            rowHeight: 40,
+            colMinimumWidth: 60,
+            borderWidth: 1,
+          ),
         ),
       },
     );

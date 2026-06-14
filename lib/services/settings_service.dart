@@ -132,9 +132,35 @@ class SettingsService {
       _lastOpenedFolderPath = json['lastOpenedFolderPath'];
       _lastSourceMode = json['lastSourceMode'] ?? false;
       _showArchived = json['showArchived'] ?? true;
-      _log('UI 状态: showArchived=$_showArchived');
+      // 加载 SAF 目录 URI（稍后异步恢复）
+      _pendingSafUri = json['safDirectoryUri'];
+      _log('UI 状态: showArchived=$_showArchived, safUri=$_pendingSafUri');
     } catch (e) {
       _log('解析配置失败: $e');
+    }
+  }
+  
+  /// 待恢复的 SAF 目录 URI
+  String? _pendingSafUri;
+  
+  /// 恢复 SAF 目录（从保存的 URI）
+  Future<void> restoreSafDirectory() async {
+    if (_pendingSafUri == null || _pendingSafUri!.isEmpty) {
+      _log('无保存的 SAF 目录 URI');
+      return;
+    }
+    
+    try {
+      _log('恢复 SAF 目录: $_pendingSafUri');
+      final dir = await DocumentFile.fromUri(_pendingSafUri!);
+      if (dir != null && dir.exists) {
+        _safDir = dir;
+        _log('SAF 目录已恢复: ${dir.uri}');
+      } else {
+        _log('SAF 目录不存在或无权限');
+      }
+    } catch (e) {
+      _log('恢复 SAF 目录失败: $e');
     }
   }
 
@@ -200,6 +226,10 @@ class SettingsService {
     json['lastOpenedFolderPath'] = _lastOpenedFolderPath;
     json['lastSourceMode'] = _lastSourceMode;
     json['showArchived'] = _showArchived;
+    // 保存 SAF 目录 URI
+    if (_safDir != null) {
+      json['safDirectoryUri'] = _safDir!.uri;
+    }
     final content = jsonEncode(json);
 
     // 1. 尝试保存到 SAF
@@ -218,6 +248,10 @@ class SettingsService {
     await _prefs?.setString(_keyLastFolderPath, _lastOpenedFolderPath ?? '');
     await _prefs?.setBool(_keyLastSourceMode, _lastSourceMode);
     await _prefs?.setBool('show_archived', _showArchived);
+    // 保存 SAF 目录 URI 到 shared_preferences
+    if (_safDir != null) {
+      await _prefs?.setString(_keyDirUri, _safDir!.uri);
+    }
   }
 
   /// 写入到 SAF

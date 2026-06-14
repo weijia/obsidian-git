@@ -139,6 +139,10 @@ class _HomeScreenState extends State<HomeScreen> {
       await _settingsService.loadSettings();
       _log('loadSettings() 返回');
 
+      // 恢复 SAF 目录（从保存的 URI）
+      await _settingsService.restoreSafDirectory();
+      _log('SAF 目录恢复完成: ${_settingsService.hasSafDirectory}');
+
       // 检查 SAF 目录是否配置
       if (!_settingsService.hasSafDirectory && Platform.isAndroid) {
         _log('SAF 目录未配置，提示用户选择');

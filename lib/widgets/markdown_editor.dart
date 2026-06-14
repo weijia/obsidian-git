@@ -112,10 +112,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     final colorScheme = Theme.of(context).colorScheme;
     // 获取屏幕宽度，减去边距
     final screenWidth = MediaQuery.of(context).size.width;
-    final editorWidth = screenWidth - 32; // 左右各 16px 边距
+    // 编辑器内边距 16*2 = 32，表格边框和额外空间约 20
+    final editorWidth = screenWidth - 52;
     
-    // 计算表格列宽，假设最多 4 列，使表格适应屏幕
-    final tableColWidth = (editorWidth / 4).clamp(80.0, 150.0);
+    // 计算表格列宽，使表格总宽度不超过屏幕
+    // 假设平均 3 列，让表格能完整显示
+    final tableColWidth = (editorWidth / 3).clamp(80.0, 120.0);
 
     return AppFlowyEditor(
       editorState: _editorState,
@@ -165,7 +167,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           tableStyle: TableStyle(
             colWidth: tableColWidth,
             rowHeight: 40,
-            colMinimumWidth: 60,
+            colMinimumWidth: 50,
             borderWidth: 1,
           ),
         ),
@@ -802,8 +804,10 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   Node _createTableNode({required int rows, required int cols}) {
     // 获取屏幕宽度，计算合适的列宽
     final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth = screenWidth - 64; // 减去边距和表格边框
-    final colWidth = (availableWidth / cols).clamp(60.0, 200.0); // 最小 60，最大 200
+    // 编辑器内边距 16*2 = 32，表格边框和额外空间约 20
+    final availableWidth = screenWidth - 52;
+    // 根据列数计算列宽，确保表格不超出屏幕
+    final colWidth = (availableWidth / cols).clamp(50.0, 120.0);
     
     // 先创建所有单元格子节点
     final List<Node> cells = [];

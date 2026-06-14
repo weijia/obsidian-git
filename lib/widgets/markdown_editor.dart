@@ -117,57 +117,63 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     // 默认列宽：假设 2 列，让表格尽量不滚动
     final tableColWidth = (availableWidth / 2).clamp(60.0, 100.0);
 
-    return AppFlowyEditor(
-      editorState: _editorState,
-      editable: !widget.readOnly,
-      autoFocus: true,
-      editorStyle: EditorStyle.desktop(
-        padding: const EdgeInsets.all(16),
-        cursorColor: colorScheme.primary,
-        selectionColor: colorScheme.primaryContainer.withAlpha(102),
-        textStyleConfiguration: TextStyleConfiguration(
-          text: TextStyle(
-            color: colorScheme.onSurface,
-            fontSize: 16,
-            height: 1.5,
-          ),
-          bold: TextStyle(
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.bold,
-          ),
-          italic: TextStyle(
-            color: colorScheme.onSurface,
-            fontStyle: FontStyle.italic,
-          ),
-          underline: TextStyle(
-            color: colorScheme.onSurface,
-            decoration: TextDecoration.underline,
-          ),
-          strikethrough: TextStyle(
-            color: colorScheme.onSurface,
-            decoration: TextDecoration.lineThrough,
-          ),
-          code: TextStyle(
-            color: colorScheme.primary,
-            backgroundColor: colorScheme.primaryContainer.withAlpha(77),
-            fontFamily: 'monospace',
-            fontSize: 14,
-          ),
-        ),
+    // 使用 ScrollConfiguration 隐藏表格滚动条
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(
+        scrollbars: false, // 禁用滚动条
       ),
-      blockComponentBuilders: {
-        ...standardBlockComponentBuilderMap,
-        // 表格：使用较小列宽，尽量避免水平滚动
-        TableBlockKeys.type: TableBlockComponentBuilder(
-          menuBuilder: _buildTableMenu,
-          tableStyle: TableStyle(
-            colWidth: tableColWidth,
-            rowHeight: 40,
-            colMinimumWidth: 40,
-            borderWidth: 1,
+      child: AppFlowyEditor(
+        editorState: _editorState,
+        editable: !widget.readOnly,
+        autoFocus: true,
+        editorStyle: EditorStyle.desktop(
+          padding: const EdgeInsets.all(16),
+          cursorColor: colorScheme.primary,
+          selectionColor: colorScheme.primaryContainer.withAlpha(102),
+          textStyleConfiguration: TextStyleConfiguration(
+            text: TextStyle(
+              color: colorScheme.onSurface,
+              fontSize: 16,
+              height: 1.5,
+            ),
+            bold: TextStyle(
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.bold,
+            ),
+            italic: TextStyle(
+              color: colorScheme.onSurface,
+              fontStyle: FontStyle.italic,
+            ),
+            underline: TextStyle(
+              color: colorScheme.onSurface,
+              decoration: TextDecoration.underline,
+            ),
+            strikethrough: TextStyle(
+              color: colorScheme.onSurface,
+              decoration: TextDecoration.lineThrough,
+            ),
+            code: TextStyle(
+              color: colorScheme.primary,
+              backgroundColor: colorScheme.primaryContainer.withAlpha(77),
+              fontFamily: 'monospace',
+              fontSize: 14,
+            ),
           ),
         ),
-      },
+        blockComponentBuilders: {
+          ...standardBlockComponentBuilderMap,
+          // 表格：使用较小列宽，尽量避免水平滚动
+          TableBlockKeys.type: TableBlockComponentBuilder(
+            menuBuilder: _buildTableMenu,
+            tableStyle: TableStyle(
+              colWidth: tableColWidth,
+              rowHeight: 40,
+              colMinimumWidth: 40,
+              borderWidth: 1,
+            ),
+          ),
+        },
+      ),
     );
   }
 

@@ -42,6 +42,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _statusMessage;
   bool? _statusSuccess;
   bool _showToken = false; // 是否显示 Token
+  
+  // 多 remote 支持
+  List<GitRemote> _remotes = [];
+  String _defaultRemote = 'origin';
 
   @override
   void initState() {
@@ -74,6 +78,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _sshKeyPath = config.sshKeyPath;
         _sshPublicKey = config.sshPublicKey;
         _sshKeyPassword = config.sshKeyPassword;
+        _remotes = config.remotes;
+        _defaultRemote = config.defaultRemote;
       } else if (oldPrefs != null) {
         // 兼容从 SharedPreferences 加载旧数据
         _authMethod = AuthMethod.values.firstWhere(
@@ -146,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return GitConfig(
       repoUrl: _repoUrlController.text.trim(),
       branch: _branchController.text.trim(),
-      localPath: '', // 由 GitService 决定
+      localPath: _config?.localPath ?? '', // 保留已有的 localPath
       username: _usernameController.text.trim(),
       email: _emailController.text.trim(),
       httpsToken: _httpsTokenController.text.trim(),
@@ -156,6 +162,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       sshKeyPassword: _sshKeyPassword,
       autoSync: _autoSync,
       syncFrequency: _syncFrequency,
+      remotes: _remotes,
+      defaultRemote: _defaultRemote,
     );
   }
 
@@ -690,6 +698,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 24),
 
+                    // 远程仓库管理
+                    _buildSection(
+                      title: '远程仓库管理',
+                      icon: Icons.cloud_sync,
+                      children: [
+                        // 已配置的 remote 列表
+                        if (_remotes.isNotEmpty) ...[
+                          ..._remotes.map((remote) => _buildRemoteItem(remote)),
+                          const Divider(),
+                        ],
+                        // 主仓库配置（向后兼容）
+                        if (_repoUrlController.text.isNotEmpty && _remotes.isEmpty)
+                          _buildRemoteItem(GitRemote(
+                            name: 'origin',
+                            url: _repoUrlController.text,
+                            httpsToken: _httpsTokenController.text,
+                            authMethod: _authMethod,
+                          )),
+                        const SizedBox(height: 8),
+                        // 添加 remote 按钮
+                        ElevatedButton.icon(
+                          onPressed: _showAddRemoteDialog,
+                          icon: const Icon(Icons.add),
+                          label: const Text('添加远程仓库'),
+                        ),
+                        if (_remotes.length > 1) ...[
+                          const SizedBox(height: 16),
+                          // 默认 remote 选择
+                          DropdownButtonFormField<String>(
+                            value: _defaultRemote,
+                            decoration: const InputDecoration(
+                              labelText: '默认推送目标',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: _remotes.map((r) {
+                              return DropdownMenuItem(
+                                value: r.name,
+                                child: Text('${r.name} (${r.url})'),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _defaultRemote = value);
+                              }
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
                     // 同步设置
                     _buildSection(
                       title: '同步设置',
@@ -830,6 +889,305 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  /// 构建 remote 列表项
+  Widget _buildRemoteItem(GitRemote remote) {
+    final isDefault = remote.name == _defaultRemote;
+    return ListTile(
+      leading: Icon(
+        isDefault ? Icons.star : Icons.cloud,
+        color: isDefault ? Colors.amber : null,
+      ),
+      title: Row(
+        children: [
+          Text(remote.name),
+          if (isDefault) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('默认', style: TextStyle(fontSize: 10)),
+            ),
+          ],
+        ],
+      ),
+      subtitle: Text(
+        remote.url,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 12),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!isDefault && _remotes.length > 1)
+            IconButton(
+              icon: const Icon(Icons.star_border),
+              tooltip: '设为默认',
+              onPressed: () {
+                setState(() => _defaultRemote = remote.name);
+              },
+            ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: '编辑',
+            onPressed: () => _showEditRemoteDialog(remote),
+          ),
+          if (_remotes.length > 1)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              tooltip: '删除',
+              onPressed: () => _deleteRemote(remote),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示添加 remote 对话框
+  void _showAddRemoteDialog() {
+    final nameController = TextEditingController(text: 'origin');
+    final urlController = TextEditingController();
+    final tokenController = TextEditingController();
+    AuthMethod authMethod = AuthMethod.https;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('添加远程仓库'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: '名称',
+                    hintText: 'origin, upstream, backup...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<AuthMethod>(
+                  value: authMethod,
+                  decoration: const InputDecoration(
+                    labelText: '认证方式',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: AuthMethod.values.map((m) {
+                    return DropdownMenuItem(value: m, child: Text(m.label));
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => authMethod = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: urlController,
+                  decoration: InputDecoration(
+                    labelText: '仓库地址',
+                    hintText: authMethod == AuthMethod.https
+                        ? 'https://github.com/user/repo.git'
+                        : 'git@github.com:user/repo.git',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                if (authMethod == AuthMethod.https) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: tokenController,
+                    decoration: const InputDecoration(
+                      labelText: '访问令牌 (可选)',
+                      hintText: 'Personal Access Token',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final url = urlController.text.trim();
+                if (name.isEmpty || url.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请填写名称和地址')),
+                  );
+                  return;
+                }
+                
+                // 检查名称是否已存在
+                if (_remotes.any((r) => r.name == name)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('名称 "$name" 已存在')),
+                  );
+                  return;
+                }
+
+                setState(() {
+                  _remotes.add(GitRemote(
+                    name: name,
+                    url: url,
+                    httpsToken: tokenController.text.trim().isNotEmpty 
+                        ? tokenController.text.trim() 
+                        : null,
+                    authMethod: authMethod,
+                  ));
+                  if (_remotes.length == 1) {
+                    _defaultRemote = name;
+                  }
+                });
+                Navigator.pop(context);
+                _showStatus('已添加远程仓库: $name', success: true);
+              },
+              child: const Text('添加'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 显示编辑 remote 对话框
+  void _showEditRemoteDialog(GitRemote remote) {
+    final nameController = TextEditingController(text: remote.name);
+    final urlController = TextEditingController(text: remote.url);
+    final tokenController = TextEditingController(text: remote.httpsToken ?? '');
+    AuthMethod authMethod = remote.authMethod;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('编辑远程仓库'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: '名称',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<AuthMethod>(
+                  value: authMethod,
+                  decoration: const InputDecoration(
+                    labelText: '认证方式',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: AuthMethod.values.map((m) {
+                    return DropdownMenuItem(value: m, child: Text(m.label));
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => authMethod = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: urlController,
+                  decoration: const InputDecoration(
+                    labelText: '仓库地址',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                if (authMethod == AuthMethod.https) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: tokenController,
+                    decoration: const InputDecoration(
+                      labelText: '访问令牌 (可选)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final url = urlController.text.trim();
+                if (name.isEmpty || url.isEmpty) return;
+
+                setState(() {
+                  final index = _remotes.indexWhere((r) => r.name == remote.name);
+                  if (index != -1) {
+                    _remotes[index] = GitRemote(
+                      name: name,
+                      url: url,
+                      httpsToken: tokenController.text.trim().isNotEmpty 
+                          ? tokenController.text.trim() 
+                          : null,
+                      authMethod: authMethod,
+                    );
+                    if (_defaultRemote == remote.name) {
+                      _defaultRemote = name;
+                    }
+                  }
+                });
+                Navigator.pop(context);
+                _showStatus('已更新远程仓库: $name', success: true);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 删除 remote
+  void _deleteRemote(GitRemote remote) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除远程仓库 "${remote.name}" 吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              setState(() {
+                _remotes.removeWhere((r) => r.name == remote.name);
+                if (_defaultRemote == remote.name && _remotes.isNotEmpty) {
+                  _defaultRemote = _remotes.first.name;
+                }
+              });
+              Navigator.pop(context);
+              _showStatus('已删除远程仓库: ${remote.name}', success: true);
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
     );
   }
 

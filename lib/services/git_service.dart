@@ -414,7 +414,7 @@ class GitService {
     final remoteBranch = git2.Branch.lookup(
       repo: repo,
       name: '$remoteName/${config.branch}',
-      type: git2.BranchType.remote,
+      type: git2.GitBranch.remote,
     );
     _log('远程分支: ${remoteBranch.name}');
 
@@ -427,11 +427,11 @@ class GitService {
     // 分析合并
     final analysis = git2.Merge.analysis(
       repo: repo,
-      theirHeads: [annotatedCommit],
+      theirHead: annotatedCommit.oid,
     );
-    _log('分析结果: ${analysis.analysis}');
+    _log('分析结果: ${analysis}');
 
-    if (analysis.analysis == git2.MergeAnalysis.upToDate) {
+    if (analysis == git2.GitMergeAnalysis.upToDate) {
       _log('已是最新，无需合并');
       annotatedCommit.free();
       remoteBranch.free();
@@ -439,7 +439,7 @@ class GitService {
       return;
     }
 
-    if (analysis.analysis == git2.MergeAnalysis.fastForward) {
+    if (analysis == git2.GitMergeAnalysis.fastForward) {
       _log('执行快进合并...');
       // 快进合并
       final refName = 'refs/heads/${config.branch}';
@@ -450,13 +450,13 @@ class GitService {
       );
       // 更新工作目录
       final commit = git2.Commit.lookup(repo: repo, oid: annotatedCommit.oid);
-      repo.reset(commit, git2.ResetType.hard);
+      repo.reset(oid: commit.oid, resetType: git2.GitReset.hard);
       commit.free();
       _log('快进合并完成');
-    } else if (analysis.analysis == git2.MergeAnalysis.normal) {
+    } else if (analysis == git2.GitMergeAnalysis.normal) {
       _log('执行普通合并...');
       // 普通合并
-      git2.Merge.commit(repo: repo, theirHeads: [annotatedCommit]);
+      git2.Merge.commit(repo: repo, commit: annotatedCommit);
       _log('普通合并完成（可能需要解决冲突）');
     }
 

@@ -273,6 +273,14 @@ class SettingsService {
   }
 
   GitConfig? _gitConfigFromJson(Map<String, dynamic> json) {
+    // 解析 remotes
+    List<GitRemote> remotes = [];
+    if (json['remotes'] != null) {
+      for (final r in json['remotes'] as List) {
+        remotes.add(GitRemote.fromJson(r as Map<String, dynamic>));
+      }
+    }
+    
     return GitConfig(
       repoUrl: json['repoUrl'] ?? '',
       branch: json['branch'] ?? 'main',
@@ -300,6 +308,8 @@ class SettingsService {
         (e) => e.name == json['lastSyncStatus'],
         orElse: () => SyncStatus.notSynced,
       ),
+      remotes: remotes,
+      defaultRemote: json['defaultRemote'] ?? 'origin',
     );
   }
 
@@ -320,6 +330,8 @@ class SettingsService {
       'autoSync': config.autoSync,
       'lastSyncTime': config.lastSyncTime?.toIso8601String(),
       'lastSyncStatus': config.lastSyncStatus.name,
+      'remotes': config.remotes.map((r) => r.toJson()).toList(),
+      'defaultRemote': config.defaultRemote,
     };
   }
 }

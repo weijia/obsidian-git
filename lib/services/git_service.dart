@@ -56,29 +56,38 @@ class GitService {
   /// 构建认证回调
   ///
   /// 根据认证方式返回相应的 Credentials
-  git2.Callbacks _buildCallbacks(GitConfig config) {
+  /// 支持从 GitConfig 或 GitRemote 获取认证信息
+  git2.Callbacks _buildCallbacks(GitConfig config, {GitRemote? remote}) {
+    // 优先使用 remote 的配置
+    final useHTTPS = remote?.useHTTPS ?? config.useHTTPS;
+    final httpsToken = remote?.httpsToken ?? config.httpsToken;
+    final sshPrivateKey = remote?.sshPrivateKey ?? config.sshPrivateKey;
+    final sshPublicKey = remote?.sshPublicKey ?? config.sshPublicKey;
+    final sshKeyPassword = remote?.sshKeyPassword ?? config.sshKeyPassword;
+    final username = config.username ?? 'git';
+    
     // HTTPS 认证 - 使用 Personal Access Token
-    if (config.useHTTPS && config.httpsToken != null && config.httpsToken!.isNotEmpty) {
+    if (useHTTPS && httpsToken != null && httpsToken.isNotEmpty) {
       _log('认证方式: HTTPS + Personal Access Token');
-      _log('  用户名: ${config.username ?? "git"}');
-      _log('  Token: ${config.httpsToken!.substring(0, 4)}...${config.httpsToken!.length > 8 ? config.httpsToken!.substring(config.httpsToken!.length - 4) : ""}');
+      _log('  用户名: $username');
+      _log('  Token: ${httpsToken.substring(0, 4)}...${httpsToken.length > 8 ? httpsToken.substring(httpsToken.length - 4) : ""}');
       return git2.Callbacks(
         credentials: git2.UserPass(
-          username: config.username ?? 'git',
-          password: config.httpsToken!,
+          username: username,
+          password: httpsToken,
         ),
       );
     }
 
     // SSH 认证 - 使用内存中的密钥
-    if (config.useSSH && config.sshPrivateKey != null && config.sshPrivateKey!.isNotEmpty) {
+    if (!useHTTPS && sshPrivateKey != null && sshPrivateKey.isNotEmpty) {
       _log('认证方式: SSH 密钥');
       return git2.Callbacks(
         credentials: git2.KeypairFromMemory(
           username: 'git',
-          pubKey: config.sshPublicKey ?? '',
-          privateKey: config.sshPrivateKey!,
-          passPhrase: config.sshKeyPassword ?? '',
+          pubKey: sshPublicKey ?? '',
+          privateKey: sshPrivateKey,
+          passPhrase: sshKeyPassword ?? '',
         ),
       );
     }
@@ -117,11 +126,13 @@ class GitService {
   /// 获取处理后的 URL
   ///
   /// 如果使用 HTTPS 认证，自动将 SSH URL 转换为 HTTPS URL
-  String _getProcessedUrl(GitConfig config) {
-    if (config.useHTTPS) {
-      return _convertSshToHttps(config.repoUrl);
+  String _getProcessedUrl(GitConfig config, {GitRemote? remote}) {
+    final url = remote?.url ?? config.repoUrl;
+    final useHTTPS = remote?.useHTTPS ?? config.useHTTPS;
+    if (useHTTPS) {
+      return _convertSshToHttps(url);
     }
-    return config.repoUrl;
+    return url;
   }
 
   /// 克隆仓库
@@ -131,7 +142,8 @@ class GitService {
   }) async {
     if (!_isInitialized) await initialize();
 
-    final url = _getProcessedUrl(config);
+    final remote = config.primaryRemote;
+    final url = _getProcessedUrl(config, remote: remote);
     _log('========== 克隆仓库 ==========');
     _log('远程 URL: $url');
     _log('本地路径: $localPath');
@@ -149,7 +161,7 @@ class GitService {
       git2.Repository.clone(
         url: url,
         localPath: localPath,
-        callbacks: _buildCallbacks(config),
+        callbacks: _buildCallbacks(config, remote: remote),
       );
       stopwatch.stop();
       _log('克隆成功！耗时: ${stopwatch.elapsedMilliseconds}ms');
@@ -168,34 +180,39 @@ class GitService {
   Future<void> fetch({
     required GitConfig config,
     required String localPath,
-    String remoteName = 'origin',
+    String? remoteName,
   }) async {
     if (!_isInitialized) await initialize();
 
+    final remote = config.remotes.firstWhere(
+      (r) => r.name == (remoteName ?? config.defaultRemote),
+      orElse: () => config.primaryRemote ?? GitRemote(name: remoteName ?? 'origin', url: config.repoUrl),
+    );
+    
     _log('========== Fetch ==========');
     _log('本地路径: $localPath');
-    _log('远程名称: $remoteName');
+    _log('远程名称: ${remote.name}');
 
     final repo = git2.Repository.open(localPath);
 
     // 如果需要，更新远程 URL
-    final url = _getProcessedUrl(config);
-    final configEntry = repo.config['remote.$remoteName.url'];
+    final url = _getProcessedUrl(config, remote: remote);
+    final configEntry = repo.config['remote.${remote.name}.url'];
     final currentUrl = configEntry.value;
     if (currentUrl != url) {
       _log('更新远程 URL: $currentUrl -> $url');
-      git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
+      git2.Remote.setUrl(repo: repo, remote: remote.name, url: url);
     } else {
       _log('远程 URL: $url');
     }
 
-    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+    final gitRemote = git2.Remote.lookup(repo: repo, name: remote.name);
 
     _log('开始获取远程更新...');
     try {
       final stopwatch = Stopwatch()..start();
-      remote.fetch(
-        callbacks: _buildCallbacks(config),
+      gitRemote.fetch(
+        callbacks: _buildCallbacks(config, remote: remote),
       );
       stopwatch.stop();
       _log('Fetch 成功！耗时: ${stopwatch.elapsedMilliseconds}ms');
@@ -203,7 +220,7 @@ class GitService {
       _log('Fetch 失败: $e');
       rethrow;
     } finally {
-      remote.free();
+      gitRemote.free();
       repo.free();
     }
   }
@@ -212,34 +229,39 @@ class GitService {
   Future<void> push({
     required GitConfig config,
     required String localPath,
-    String remoteName = 'origin',
+    String? remoteName,
   }) async {
     if (!_isInitialized) await initialize();
 
+    final remote = config.remotes.firstWhere(
+      (r) => r.name == (remoteName ?? config.defaultRemote),
+      orElse: () => config.primaryRemote ?? GitRemote(name: remoteName ?? 'origin', url: config.repoUrl),
+    );
+
     _log('========== Push ==========');
     _log('本地路径: $localPath');
-    _log('远程名称: $remoteName');
+    _log('远程名称: ${remote.name}');
 
     final repo = git2.Repository.open(localPath);
 
     // 如果需要，更新远程 URL
-    final url = _getProcessedUrl(config);
-    final configEntry = repo.config['remote.$remoteName.url'];
+    final url = _getProcessedUrl(config, remote: remote);
+    final configEntry = repo.config['remote.${remote.name}.url'];
     final currentUrl = configEntry.value;
     if (currentUrl != url) {
       _log('更新远程 URL: $currentUrl -> $url');
-      git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
+      git2.Remote.setUrl(repo: repo, remote: remote.name, url: url);
     } else {
       _log('远程 URL: $url');
     }
 
-    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+    final gitRemote = git2.Remote.lookup(repo: repo, name: remote.name);
 
     _log('开始推送到远程...');
     try {
       final stopwatch = Stopwatch()..start();
-      remote.push(
-        callbacks: _buildCallbacks(config),
+      gitRemote.push(
+        callbacks: _buildCallbacks(config, remote: remote),
       );
       stopwatch.stop();
       _log('Push 成功！耗时: ${stopwatch.elapsedMilliseconds}ms');
@@ -247,7 +269,7 @@ class GitService {
       _log('Push 失败: $e');
       rethrow;
     } finally {
-      remote.free();
+      gitRemote.free();
       repo.free();
     }
   }
@@ -373,47 +395,52 @@ class GitService {
   Future<void> pull({
     required GitConfig config,
     required String localPath,
-    String remoteName = 'origin',
+    String? remoteName,
   }) async {
     if (!_isInitialized) await initialize();
 
+    final remote = config.remotes.firstWhere(
+      (r) => r.name == (remoteName ?? config.defaultRemote),
+      orElse: () => config.primaryRemote ?? GitRemote(name: remoteName ?? 'origin', url: config.repoUrl),
+    );
+
     _log('========== Pull ==========');
     _log('本地路径: $localPath');
-    _log('远程名称: $remoteName');
+    _log('远程名称: ${remote.name}');
 
     final repo = git2.Repository.open(localPath);
 
     // 如果需要，更新远程 URL
-    final url = _getProcessedUrl(config);
-    final configEntry = repo.config['remote.$remoteName.url'];
+    final url = _getProcessedUrl(config, remote: remote);
+    final configEntry = repo.config['remote.${remote.name}.url'];
     final currentUrl = configEntry.value;
     if (currentUrl != url) {
       _log('更新远程 URL: $currentUrl -> $url');
-      git2.Remote.setUrl(repo: repo, remote: remoteName, url: url);
+      git2.Remote.setUrl(repo: repo, remote: remote.name, url: url);
     } else {
       _log('远程 URL: $url');
     }
 
     // 获取远程更新
     _log('开始 fetch...');
-    final remote = git2.Remote.lookup(repo: repo, name: remoteName);
+    final gitRemote = git2.Remote.lookup(repo: repo, name: remote.name);
     try {
-      remote.fetch(
-        callbacks: _buildCallbacks(config),
+      gitRemote.fetch(
+        callbacks: _buildCallbacks(config, remote: remote),
       );
       _log('Fetch 完成');
     } catch (e) {
       _log('Fetch 失败: $e');
       rethrow;
     } finally {
-      remote.free();
+      gitRemote.free();
     }
 
     // 合并远程分支
     _log('开始合并远程分支...');
     final remoteBranch = git2.Branch.lookup(
       repo: repo,
-      name: '$remoteName/${config.branch}',
+      name: '${remote.name}/${config.branch}',
       type: git2.GitBranch.remote,
     );
     _log('远程分支: ${remoteBranch.name}');

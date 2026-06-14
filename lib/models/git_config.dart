@@ -1,8 +1,86 @@
 import 'package:equatable/equatable.dart';
 
+/// Git Remote 配置
+class GitRemote extends Equatable {
+  final String name; // remote 名称，如 origin, upstream
+  final String url; // 远程 URL
+  final String? httpsToken; // HTTPS Token（每个 remote 可以不同）
+  final String? sshPrivateKey; // SSH 私钥
+  final String? sshPublicKey; // SSH 公钥
+  final String? sshKeyPassword; // SSH 密钥密码
+  final AuthMethod authMethod;
+
+  const GitRemote({
+    required this.name,
+    required this.url,
+    this.httpsToken,
+    this.sshPrivateKey,
+    this.sshPublicKey,
+    this.sshKeyPassword,
+    this.authMethod = AuthMethod.https,
+  });
+
+  /// 是否使用 SSH
+  bool get useSSH => authMethod == AuthMethod.ssh;
+
+  /// 是否使用 HTTPS
+  bool get useHTTPS => authMethod == AuthMethod.https;
+
+  /// 是否已配置
+  bool get isConfigured => url.isNotEmpty;
+
+  GitRemote copyWith({
+    String? name,
+    String? url,
+    String? httpsToken,
+    String? sshPrivateKey,
+    String? sshPublicKey,
+    String? sshKeyPassword,
+    AuthMethod? authMethod,
+  }) {
+    return GitRemote(
+      name: name ?? this.name,
+      url: url ?? this.url,
+      httpsToken: httpsToken ?? this.httpsToken,
+      sshPrivateKey: sshPrivateKey ?? this.sshPrivateKey,
+      sshPublicKey: sshPublicKey ?? this.sshPublicKey,
+      sshKeyPassword: sshKeyPassword ?? this.sshKeyPassword,
+      authMethod: authMethod ?? this.authMethod,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'url': url,
+    'httpsToken': httpsToken,
+    'sshPrivateKey': sshPrivateKey,
+    'sshPublicKey': sshPublicKey,
+    'sshKeyPassword': sshKeyPassword,
+    'authMethod': authMethod.name,
+  };
+
+  factory GitRemote.fromJson(Map<String, dynamic> json) {
+    return GitRemote(
+      name: json['name'] as String? ?? 'origin',
+      url: json['url'] as String? ?? '',
+      httpsToken: json['httpsToken'] as String?,
+      sshPrivateKey: json['sshPrivateKey'] as String?,
+      sshPublicKey: json['sshPublicKey'] as String?,
+      sshKeyPassword: json['sshKeyPassword'] as String?,
+      authMethod: AuthMethod.values.firstWhere(
+        (e) => e.name == json['authMethod'],
+        orElse: () => AuthMethod.https,
+      ),
+    );
+  }
+
+  @override
+  List<Object?> get props => [name, url, httpsToken, sshPrivateKey, sshPublicKey, sshKeyPassword, authMethod];
+}
+
 /// Git 配置模型
 class GitConfig extends Equatable {
-  final String repoUrl;
+  final String repoUrl; // 主 remote URL（向后兼容）
   final String branch;
   final String localPath;
   final String? username;
@@ -17,6 +95,10 @@ class GitConfig extends Equatable {
   final bool autoSync;
   final DateTime? lastSyncTime;
   final SyncStatus lastSyncStatus;
+  
+  /// 多 remote 支持
+  final List<GitRemote> remotes;
+  final String defaultRemote; // 默认推送的 remote
 
   const GitConfig({
     required this.repoUrl,
@@ -34,6 +116,8 @@ class GitConfig extends Equatable {
     this.autoSync = false,
     this.lastSyncTime,
     this.lastSyncStatus = SyncStatus.notSynced,
+    this.remotes = const [],
+    this.defaultRemote = 'origin',
   });
 
   /// 是否使用 SSH
@@ -47,6 +131,29 @@ class GitConfig extends Equatable {
 
   /// 获取认证方式标签
   String get authMethodLabel => authMethod.label;
+  
+  /// 获取默认 remote
+  GitRemote? get primaryRemote {
+    if (remotes.isEmpty) {
+      // 向后兼容：从旧字段创建 remote
+      if (repoUrl.isNotEmpty) {
+        return GitRemote(
+          name: defaultRemote,
+          url: repoUrl,
+          httpsToken: httpsToken,
+          sshPrivateKey: sshPrivateKey,
+          sshPublicKey: sshPublicKey,
+          sshKeyPassword: sshKeyPassword,
+          authMethod: authMethod,
+        );
+      }
+      return null;
+    }
+    return remotes.firstWhere(
+      (r) => r.name == defaultRemote,
+      orElse: () => remotes.first,
+    );
+  }
 
   GitConfig copyWith({
     String? repoUrl,
@@ -64,6 +171,8 @@ class GitConfig extends Equatable {
     bool? autoSync,
     DateTime? lastSyncTime,
     SyncStatus? lastSyncStatus,
+    List<GitRemote>? remotes,
+    String? defaultRemote,
   }) {
     return GitConfig(
       repoUrl: repoUrl ?? this.repoUrl,
@@ -81,6 +190,8 @@ class GitConfig extends Equatable {
       autoSync: autoSync ?? this.autoSync,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
       lastSyncStatus: lastSyncStatus ?? this.lastSyncStatus,
+      remotes: remotes ?? this.remotes,
+      defaultRemote: defaultRemote ?? this.defaultRemote,
     );
   }
 
@@ -101,6 +212,8 @@ class GitConfig extends Equatable {
         autoSync,
         lastSyncTime,
         lastSyncStatus,
+        remotes,
+        defaultRemote,
       ];
 }
 

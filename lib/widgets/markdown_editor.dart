@@ -110,14 +110,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
   Widget _buildVisualEditor() {
     final colorScheme = Theme.of(context).colorScheme;
-    // 获取屏幕宽度，减去边距
+    // 获取屏幕宽度
     final screenWidth = MediaQuery.of(context).size.width;
-    // 编辑器内边距 16*2 = 32，表格边框和额外空间约 20
-    final editorWidth = screenWidth - 52;
-    
-    // 计算表格列宽，使表格总宽度不超过屏幕
-    // 假设平均 3 列，让表格能完整显示
-    final tableColWidth = (editorWidth / 3).clamp(80.0, 120.0);
+    // 计算可用宽度：屏幕宽度 - 编辑器内边距(32) - 表格内边距(20) - 边框(4)
+    final availableWidth = screenWidth - 56;
+    // 默认列宽：假设 2 列，让表格尽量不滚动
+    final tableColWidth = (availableWidth / 2).clamp(60.0, 100.0);
 
     return AppFlowyEditor(
       editorState: _editorState,
@@ -127,8 +125,6 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         padding: const EdgeInsets.all(16),
         cursorColor: colorScheme.primary,
         selectionColor: colorScheme.primaryContainer.withAlpha(102),
-        // 限制最大宽度，防止内容超出屏幕
-        maxWidth: editorWidth,
         textStyleConfiguration: TextStyleConfiguration(
           text: TextStyle(
             color: colorScheme.onSurface,
@@ -161,13 +157,13 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       ),
       blockComponentBuilders: {
         ...standardBlockComponentBuilderMap,
-        // 为表格添加行/列操作菜单，并设置列宽适应屏幕
+        // 表格：使用较小列宽，尽量避免水平滚动
         TableBlockKeys.type: TableBlockComponentBuilder(
           menuBuilder: _buildTableMenu,
           tableStyle: TableStyle(
             colWidth: tableColWidth,
             rowHeight: 40,
-            colMinimumWidth: 50,
+            colMinimumWidth: 40,
             borderWidth: 1,
           ),
         ),
@@ -804,10 +800,10 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   Node _createTableNode({required int rows, required int cols}) {
     // 获取屏幕宽度，计算合适的列宽
     final screenWidth = MediaQuery.of(context).size.width;
-    // 编辑器内边距 16*2 = 32，表格边框和额外空间约 20
-    final availableWidth = screenWidth - 52;
+    // 计算可用宽度：屏幕宽度 - 编辑器内边距(32) - 表格内边距(20) - 边框(4)
+    final availableWidth = screenWidth - 56;
     // 根据列数计算列宽，确保表格不超出屏幕
-    final colWidth = (availableWidth / cols).clamp(50.0, 120.0);
+    final colWidth = (availableWidth / cols).clamp(40.0, 100.0);
     
     // 先创建所有单元格子节点
     final List<Node> cells = [];

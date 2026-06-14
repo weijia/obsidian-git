@@ -49,6 +49,13 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     });
 
     _isInitialized = true;
+    
+    // 调整表格列宽
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _adjustTableWidths();
+      }
+    });
   }
 
   @override
@@ -66,6 +73,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         // 切换到可视化模式
         final document = _markdownToDocument(_sourceController.text);
         _editorState = EditorState(document: document);
+        // 调整表格列宽
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _adjustTableWidths();
+          }
+        });
       }
     }
   }
@@ -117,64 +130,104 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     // 默认列宽：假设 2 列，让表格尽量不滚动
     final tableColWidth = (availableWidth / 2).clamp(60.0, 100.0);
 
-    // 使用 ScrollConfiguration 隐藏表格滚动条
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(
-        scrollbars: false, // 禁用滚动条
-      ),
-      child: AppFlowyEditor(
-        editorState: _editorState,
-        editable: !widget.readOnly,
-        autoFocus: true,
-        editorStyle: EditorStyle.desktop(
-          padding: const EdgeInsets.all(16),
-          cursorColor: colorScheme.primary,
-          selectionColor: colorScheme.primaryContainer.withAlpha(102),
-          textStyleConfiguration: TextStyleConfiguration(
-            text: TextStyle(
-              color: colorScheme.onSurface,
-              fontSize: 16,
-              height: 1.5,
-            ),
-            bold: TextStyle(
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.bold,
-            ),
-            italic: TextStyle(
-              color: colorScheme.onSurface,
-              fontStyle: FontStyle.italic,
-            ),
-            underline: TextStyle(
-              color: colorScheme.onSurface,
-              decoration: TextDecoration.underline,
-            ),
-            strikethrough: TextStyle(
-              color: colorScheme.onSurface,
-              decoration: TextDecoration.lineThrough,
-            ),
-            code: TextStyle(
-              color: colorScheme.primary,
-              backgroundColor: colorScheme.primaryContainer.withAlpha(77),
-              fontFamily: 'monospace',
-              fontSize: 14,
-            ),
+    return AppFlowyEditor(
+      editorState: _editorState,
+      editable: !widget.readOnly,
+      autoFocus: true,
+      editorStyle: EditorStyle.desktop(
+        padding: const EdgeInsets.all(16),
+        cursorColor: colorScheme.primary,
+        selectionColor: colorScheme.primaryContainer.withAlpha(102),
+        textStyleConfiguration: TextStyleConfiguration(
+          text: TextStyle(
+            color: colorScheme.onSurface,
+            fontSize: 16,
+            height: 1.5,
+          ),
+          bold: TextStyle(
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.bold,
+          ),
+          italic: TextStyle(
+            color: colorScheme.onSurface,
+            fontStyle: FontStyle.italic,
+          ),
+          underline: TextStyle(
+            color: colorScheme.onSurface,
+            decoration: TextDecoration.underline,
+          ),
+          strikethrough: TextStyle(
+            color: colorScheme.onSurface,
+            decoration: TextDecoration.lineThrough,
+          ),
+          code: TextStyle(
+            color: colorScheme.primary,
+            backgroundColor: colorScheme.primaryContainer.withAlpha(77),
+            fontFamily: 'monospace',
+            fontSize: 14,
           ),
         ),
-        blockComponentBuilders: {
-          ...standardBlockComponentBuilderMap,
-          // 表格：使用较小列宽，尽量避免水平滚动
-          TableBlockKeys.type: TableBlockComponentBuilder(
-            menuBuilder: _buildTableMenu,
-            tableStyle: TableStyle(
-              colWidth: tableColWidth,
-              rowHeight: 40,
-              colMinimumWidth: 40,
-              borderWidth: 1,
-            ),
-          ),
-        },
       ),
+      blockComponentBuilders: {
+        ...standardBlockComponentBuilderMap,
+        // 表格：使用较小列宽
+        TableBlockKeys.type: TableBlockComponentBuilder(
+          menuBuilder: _buildTableMenu,
+          tableStyle: TableStyle(
+            colWidth: tableColWidth,
+            rowHeight: 40,
+            colMinimumWidth: 40,
+            borderWidth: 1,
+          ),
+        ),
+      },
     );
+  }
+  
+  /// 调整文档中所有表格的列宽，确保不超出屏幕
+  void _adjustTableWidths() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final availableWidth = screenWidth - 56;
+    
+    final transaction = _editorState.transaction;
+    bool hasChanges = false;
+    
+    // 遍历所有节点
+    for (final node in _editorState.document.root.children) {
+      if (node.type == TableBlockKeys.type) {
+        try {
+          final tableNode = TableNode(node: node);
+          final colsLen = tableNode.colsLen;
+          final dynamicColWidth = (availableWidth / colsLen).clamp(40.0, 100.0);
+          
+          // 更新每个单元格的宽度
+          for (final cell in node.children) {
+            final currentWidth = cell.attributes[TableCellBlockKeys.width] as double?;
+            if (currentWidth == null || (currentWidth - dynamicColWidth).abs() > 1) {
+              transaction.updateNode(cell, {
+                TableCellBlockKeys.width: dynamicColWidth,
+              });
+              hasChanges = true;
+            }
+          }
+          
+          // 更新表格的默认列宽
+          final currentDefaultWidth = node.attributes[TableBlockKeys.colDefaultWidth] as double?;
+          if (currentDefaultWidth == null || (currentDefaultWidth - dynamicColWidth).abs() > 1) {
+            transaction.updateNode(node, {
+              TableBlockKeys.colDefaultWidth: dynamicColWidth,
+            });
+            hasChanges = true;
+          }
+        } catch (e) {
+          // 忽略无效的表格节点
+        }
+      }
+    }
+    
+    if (hasChanges) {
+      _editorState.apply(transaction);
+    }
   }
 
   Widget _buildSourceEditor() {

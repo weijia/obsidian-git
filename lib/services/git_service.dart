@@ -436,13 +436,122 @@ class GitService {
       gitRemote.free();
     }
 
+    // 处理空仓库：本地没有任何提交时，fetch 不会自动创建远程分支引用
+    // 需要手动创建本地分支并关联远程分支
+    if (repo.isEmpty) {
+      _log('本地仓库为空，尝试从远程分支初始化...');
+      try {
+        // 尝试通过 FETCH_HEAD 获取远程分支的 OID
+        final fetchHead = git2.Reference.lookup(
+          repo: repo,
+          name: 'FETCH_HEAD',
+        );
+        final remoteOid = fetchHead.target;
+        _log('FETCH_HEAD OID: $remoteOid');
+        fetchHead.free();
+
+        // 创建本地分支指向远程提交
+        final localBranch = git2.Branch.create(
+          repo: repo,
+          name: config.branch,
+          target: remoteOid,
+          force: false,
+        );
+        _log('已创建本地分支: ${config.branch}');
+
+        // 设置 HEAD 为符号引用，指向本地分支
+        git2.Reference.setTarget(
+          repo: repo,
+          name: 'HEAD',
+          target: 'refs/heads/${config.branch}',
+        );
+
+        // 检出工作目录
+        final commit = git2.Commit.lookup(repo: repo, oid: remoteOid);
+        repo.reset(oid: commit.oid, resetType: git2.GitReset.hard);
+        commit.free();
+        localBranch.free();
+
+        _log('空仓库初始化完成，已从远程分支检出文件');
+        repo.free();
+        return;
+      } catch (e) {
+        _log('空仓库初始化失败: $e');
+        _log('提示：如果远程仓库也是空的，请先在远程创建一个提交');
+        repo.free();
+        rethrow;
+      }
+    }
+
     // 合并远程分支
     _log('开始合并远程分支...');
-    final remoteBranch = git2.Branch.lookup(
-      repo: repo,
-      name: '${remote.name}/${config.branch}',
-      type: git2.GitBranch.remote,
-    );
+    git2.Branch? remoteBranch;
+    try {
+      remoteBranch = git2.Branch.lookup(
+        repo: repo,
+        name: '${remote.name}/${config.branch}',
+        type: git2.GitBranch.remote,
+      );
+    } catch (e) {
+      _log('查找远程分支失败: $e');
+      _log('尝试通过 FETCH_HEAD 获取远程提交...');
+      // 降级方案：通过 FETCH_HEAD 获取远程提交
+      try {
+        final fetchHead = git2.Reference.lookup(
+          repo: repo,
+          name: 'FETCH_HEAD',
+        );
+        final remoteOid = fetchHead.target;
+        _log('通过 FETCH_HEAD 获取到远程提交: $remoteOid');
+        fetchHead.free();
+
+        final annotatedCommit = git2.AnnotatedCommit.lookup(
+          repo: repo,
+          oid: remoteOid,
+        );
+
+        final analysis = git2.Merge.analysis(
+          repo: repo,
+          theirHead: annotatedCommit.oid,
+        );
+        _log('分析结果: $analysis');
+
+        if (analysis == git2.GitMergeAnalysis.upToDate) {
+          _log('已是最新，无需合并');
+          annotatedCommit.free();
+          repo.free();
+          return;
+        }
+
+        if (analysis == git2.GitMergeAnalysis.fastForward) {
+          _log('执行快进合并...');
+          final refName = 'refs/heads/${config.branch}';
+          git2.Reference.setTarget(
+            repo: repo,
+            name: refName,
+            target: annotatedCommit.oid,
+          );
+          final commit = git2.Commit.lookup(repo: repo, oid: annotatedCommit.oid);
+          repo.reset(oid: commit.oid, resetType: git2.GitReset.hard);
+          commit.free();
+          _log('快进合并完成');
+        } else if (analysis == git2.GitMergeAnalysis.normal) {
+          _log('执行普通合并...');
+          git2.Merge.commit(repo: repo, commit: annotatedCommit);
+          _log('普通合并完成（可能需要解决冲突）');
+        }
+
+        annotatedCommit.free();
+        repo.free();
+        _log('Pull 完成（通过 FETCH_HEAD 降级）');
+        return;
+      } catch (e2) {
+        _log('FETCH_HEAD 降级方案也失败: $e2');
+        repo.free();
+        rethrow;
+      }
+    }
+
     _log('远程分支: ${remoteBranch.name}');
 
     final annotatedCommit = git2.AnnotatedCommit.lookup(
